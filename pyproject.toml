@@ -1,0 +1,16 @@
+[tool.black]
+line-length = 120
+skip-string-normalization = true
+extend-exclude = '''
+/(\.venv|venv|migrations/versions)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 120
+skip = [".venv", "venv"]
+skip_glob = ["migrations/versions/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
