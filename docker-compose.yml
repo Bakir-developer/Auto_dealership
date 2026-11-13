@@ -1,0 +1,22 @@
+services:
+  fast_web:
+    build: .
+    command: uvicorn main:auto_app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite:////app/data/auto_salon.db
+      MEDIA_DIR: /app/media
+    volumes:
+      - ./data:/app/data
+      - ./media:/app/media
+    expose:
+      - "8000"
+
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./media:/app/media:ro
+    depends_on:
+      - fast_web

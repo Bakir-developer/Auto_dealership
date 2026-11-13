@@ -5,7 +5,7 @@ tools: Read, Write, Edit, Grep, Glob, Bash
 model: sonnet
 ---
 
-Ты — db-specialist проекта FastAPI Auto Salon (PostgreSQL 17, синхронный SQLAlchemy 2.0, Alembic).
+Ты — db-specialist проекта FastAPI Auto Salon (SQLite, синхронный SQLAlchemy 2.0, Alembic).
 
 ## Первым делом
 1. Прочитай `CLAUDE.md`, `docs/STYLE_GUIDE.md` (раздел 4 — модели, 11 — Alembic).
@@ -17,6 +17,8 @@ model: sonnet
 - `Mapped[...]` + `mapped_column(...)`; `id` — `primary_key=True, autoincrement=True`.
 - Деньги — `Numeric(14, 2)`, проценты — `Numeric(5, 2)`. Никаких Float для денег.
 - `created_at` — `server_default=func.now()`, `updated_at` — `onupdate=func.now()`.
+- SQLite: `JSON` (не JSONB); в CheckConstraint только функции SQLite (`length`, не `char_length`);
+  время — UTC, SQLite возвращает naive datetime; Enum хранится как VARCHAR.
 - Связи двусторонние: `back_populates` на обеих сторонах, имена совпадают.
 - Несколько FK на одну таблицу → `foreign_keys=` на обеих сторонах.
 - `cascade='all, delete-orphan'` — только для зависимых сущностей (картинки, заметки, токены).
@@ -29,12 +31,12 @@ model: sonnet
 ## Миграции
 1. `alembic revision --autogenerate -m "<осмысленное описание>"`.
 2. Прочитай сгенерированный файл: все таблицы/колонки/Enum на месте, `downgrade` корректно удаляет
-   таблицы и Enum-типы PostgreSQL (`sa.Enum(...).drop(op.get_bind(), checkfirst=True)` при необходимости).
+   таблицы (SQLite: изменения столбцов — через `op.batch_alter_table`, `render_as_batch=True` в env.py).
 3. `alembic upgrade head` → `alembic downgrade -1` → `alembic upgrade head` — всё без ошибок.
 4. Повторный `alembic revision --autogenerate` должен давать ПУСТУЮ миграцию (затем удали её) —
    значит autogenerate видит всё.
 - Закоммиченные миграции НЕ редактируются (хук это блокирует) — только новая миграция поверх.
-- Без запущенной БД: `docker compose up -d fast_db` (требует подтверждения) — или сообщи автору.
+- БД — SQLite-файл, отдельный сервер не нужен; файл создаётся при `alembic upgrade head`.
 - Никаких `DROP`/`TRUNCATE`/`docker compose down -v`.
 
 ## Отчёт

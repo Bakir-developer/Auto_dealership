@@ -1,6 +1,6 @@
 ---
 name: testing
-description: Применяй при написании и запуске pytest-тестов — структура tests/, фикстуры, тестовая PostgreSQL-БД, переопределение get_db, TestClient, токены для ролей admin/seller/client.
+description: Применяй при написании и запуске pytest-тестов — структура tests/, фикстуры, тестовая SQLite-БД, переопределение get_db, TestClient, токены для ролей admin/seller/client.
 ---
 
 # Тестирование
@@ -18,35 +18,54 @@ tests/
 `test_create_car_as_client_forbidden`, `test_detail_foreign_deal_returns_404`.
 
 ## Тестовая БД
-PostgreSQL (не SQLite!): нужны `Enum`, `Numeric`, `SELECT ... FOR UPDATE`, `JSON`.
-- Отдельная база `auto_salon_test`, URL — в переменной `TEST_DATABASE_URL` (в `.env`, пример — в `.env.example`).
-- Таблицы: `Base.metadata.create_all` в начале сессии, `drop_all` в конце.
+SQLite, отдельный файл `test_auto_salon.db` (URL — `TEST_DATABASE_URL`, по умолчанию `sqlite:///./test_auto_salon.db`).
+- `DATABASE_URL` и `SECRET_KEY` выставляются в `os.environ` **ДО** `from main import auto_app` — иначе
+  `engine` приложения (и sqladmin) смотрит на рабочую `auto_salon.db`.
+- Движок — тот же `engine` из `mysite.db.database` (с `check_same_thread=False` и `PRAGMA foreign_keys=ON`).
+- Обход pysqlite (`isolation_level=None` + `BEGIN` в событии `begin`) — без него SAVEPOINT не изолирует
+  тесты и `commit()` в тесте реально пишет в файл.
+- Таблицы: `drop_all` + `create_all` в начале сессии, `drop_all` в конце.
 - Каждый тест — в транзакции с откатом (данные не протекают между тестами).
 
-## conftest.py (шаблон)
+## conftest.py (шаблон — как в `tests/conftest.py`)
 ```python
 import os
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+TEST_DATABASE_URL = os.getenv('TEST_DATABASE_URL', 'sqlite:///./test_auto_salon.db')
+assert 'test' in TEST_DATABASE_URL, 'TEST_DATABASE_URL должен указывать на тестовую БД'
+os.environ['DATABASE_URL'] = TEST_DATABASE_URL
+os.environ['SECRET_KEY'] = 'test-secret-key-for-pytest-only-0123456789'
 
-from main import auto_app
-from mysite.api.auth import create_access_token, get_password_hash
-from mysite.db.database import Base, get_db
-from mysite.db.models import UserProfile, UserRole
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import event  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
 
-TEST_DATABASE_URL = os.getenv('TEST_DATABASE_URL')
-engine = create_engine(TEST_DATABASE_URL)
+from main import auto_app  # noqa: E402
+from mysite.api.auth import create_access_token, get_password_hash  # noqa: E402
+from mysite.db.database import Base, engine, get_db  # noqa: E402
+from mysite.db.models import UserProfile, UserRole  # noqa: E402
+
 TestingSessionLocal = sessionmaker(bind=engine)
+
+
+@event.listens_for(engine, 'connect')
+def _disable_pysqlite_autobegin(dbapi_connection, connection_record):
+    dbapi_connection.isolation_level = None
+
+
+@event.listens_for(engine, 'begin')
+def _emit_begin(connection):
+    connection.exec_driver_sql('BEGIN')
 
 
 @pytest.fixture(scope='session', autouse=True)
 def create_tables():
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
+    engine.dispose()
 
 
 @pytest.fixture
@@ -114,7 +133,7 @@ def client_user(db):
 .venv/Scripts/python.exe -m pytest -q          # все
 .venv/Scripts/python.exe -m pytest -q -x -vv tests/test_car.py::test_create_car_ok
 ```
-Тестовая БД должна быть поднята: `docker compose up -d fast_db` и создана база `auto_salon_test`.
+Тестовая БД — SQLite-файл `test_auto_salon.db`, создаётся автоматически (`create_all` в conftest).
 
 ## Принцип
 Тест фиксирует поведение по ТЗ. Если код ведёт себя иначе — это баг кода, а не теста.

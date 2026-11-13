@@ -4,6 +4,7 @@ from enum import Enum as PyEnum
 from typing import List, Optional
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -18,7 +19,6 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -279,7 +279,7 @@ class Car(Base):
 
     __table_args__ = (
         CheckConstraint('price > 0', name='ck_car_price_positive'),
-        CheckConstraint('char_length(vin) = 17', name='ck_car_vin_length'),
+        CheckConstraint('length(vin) = 17', name='ck_car_vin_length'),
         CheckConstraint('mileage >= 0', name='ck_car_mileage_not_negative'),
         CheckConstraint('owners_count IS NULL OR owners_count >= 0', name='ck_car_owners_not_negative'),
         CheckConstraint('engine_volume IS NULL OR engine_volume > 0', name='ck_car_engine_volume_positive'),
@@ -526,8 +526,8 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(50))
     entity_name: Mapped[str] = mapped_column(String(50))
     entity_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    old_value: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    new_value: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    old_value: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    new_value: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[Optional['UserProfile']] = relationship('UserProfile', back_populates='audit_logs')

@@ -12,7 +12,7 @@ model: opus
 2. **Не открывай `.env`** — проверяй только факт: есть ли `.env` в `.gitignore`, есть ли `.env.example`.
 
 ## Чек-лист
-1. **Секреты в коде:** Grep по `SECRET_KEY\s*=\s*['"]`, `password\s*=\s*['"]`, `postgresql://.*:.*@`,
+1. **Секреты в коде:** Grep по `SECRET_KEY\s*=\s*['"]`, `password\s*=\s*['"]`, `://[^/\s]+:[^@\s]+@` (пароль в URL),
    токены/ключи в `mysite/`, `main.py`, `alembic.ini`, `docker-compose.yml`, `tests/`.
    Секреты только через `os.getenv` в `mysite/config.py`. `SECRET_KEY` без дефолта в коде.
 2. **.env:** `.env` в `.gitignore`; `.env.example` без реальных значений.

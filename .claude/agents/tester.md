@@ -33,5 +33,5 @@ model: sonnet
 Добавлены тесты: tests/test_car.py (12)
 Падения:
 - tests/test_deal.py::test_reserve_twice_conflict — ожидалось 409, получено 200.
-  Причина: mysite/api/deal.py:88 нет with_for_update/проверки статуса авто. Это баг кода.
+  Причина: mysite/api/deal.py:88 бронь не через атомарный UPDATE ... WHERE status='available' (rowcount не проверяется). Это баг кода.
 ```

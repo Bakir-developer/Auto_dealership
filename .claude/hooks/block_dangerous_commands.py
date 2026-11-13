@@ -12,11 +12,14 @@ DANGEROUS = [
     (r'remove-item\b(?=.*-recurse)(?=.*-force)', 'Remove-Item -Recurse -Force'),
     (r'\brd\s+/s\b|\brmdir\s+/s\b', 'rmdir /s'),
     (r'\bdrop\s+(table|database|schema)\b', 'DROP TABLE/DATABASE/SCHEMA'),
-    (r'\bdropdb\b', 'dropdb'),
     (r'\btruncate\s+(table\s+)?["\w]', 'TRUNCATE'),
     (r'\bdocker\s+volume\s+(rm|prune)\b', 'docker volume rm/prune'),
     (r'\bdocker\s+system\s+prune\b.*--volumes', 'docker system prune --volumes'),
     (r'\bdocker[\s-]compose\s+down\b.*(\s-v\b|--volumes)', 'docker compose down -v'),
+    (
+        r'\b(rm|del|erase|unlink|remove-item|ri|mv|move|move-item)\b[^;&|\n]*\.(db|sqlite3?|db-journal)\b',
+        'удаление/перемещение файла БД SQLite (*.db, *.sqlite3)',
+    ),
 ]
 
 GIT_FORBIDDEN = (

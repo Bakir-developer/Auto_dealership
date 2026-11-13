@@ -13,7 +13,7 @@
 
 ## 2. Стек
 
-FastAPI, синхронный SQLAlchemy 2.0, PostgreSQL 17, Alembic, Pydantic v2, passlib/bcrypt,
+FastAPI, синхронный SQLAlchemy 2.0, SQLite, Alembic, Pydantic v2, passlib/bcrypt,
 python-jose (JWT access + refresh), sqladmin, Docker + docker-compose + nginx, pytest.
 
 ## 3. Роли
@@ -129,8 +129,9 @@ test_drive_minutes (60), reservation_hours (48), default_discount_limit (3).
    `new → in_progress → reserved → paid → delivered`;
    из любого статуса, кроме `delivered`, → `cancelled`.
    Недопустимый переход → **409**.
-2. **Двойная бронь невозможна** — блокировка строки авто (`SELECT ... FOR UPDATE`,
-   `with_for_update()`).
+2. **Двойная бронь невозможна** — в SQLite нет блокировки строк, поэтому смена статуса авто на
+   `reserved` — одним атомарным `UPDATE car SET status='reserved' WHERE id=:id AND status='available'`;
+   `rowcount == 0` → **409** «Авто уже забронировано».
 3. **Истечение брони:** через `reservation_hours` без оплаты → сделка `cancelled`,
    авто `available`, уведомления продавцу и клиенту. Реализация — фоновая задача
    (по образцу `game_scheduler` из mafia_app).
@@ -153,3 +154,20 @@ test_drive_minutes (60), reservation_hours (48), default_discount_limit (3).
 - Пароли — bcrypt-хеш; в ответах API пароль и токены из БД не возвращаются.
 - Все списки с пагинацией (`skip`/`limit`) там, где данных может быть много (каталог, заявки, сделки).
 - Каталог: фильтры по марке, модели, году, цене, состоянию, кузову, топливу, КПП, приводу, статусу.
+  Поиск без учёта регистра по кириллице в SQLite (`ilike`, `lower()`) работает только для латиницы —
+  для текстовых фильтров нормализовать регистр в Python или хранить отдельное поле в нижнем регистре.
+
+## 7. База данных — SQLite
+
+- Файл `auto_salon.db` (в Docker — `./data/auto_salon.db`). Отдельного сервера БД нет.
+- Внешние ключи включаются `PRAGMA foreign_keys=ON` при каждом подключении.
+- **Деньги:** `Numeric(14, 2)`, проценты `Numeric(5, 2)`; все расчёты (скидки, `final_price`,
+  кредитный калькулятор) — только через `Decimal`, без `float`.
+- **Время:** хранится в UTC; текущее время — `datetime.now(timezone.utc)` в Python. SQLite возвращает
+  naive datetime — перед сравнением приводить к UTC. На часовые пояса БД не полагаться.
+  При записи tzinfo отбрасывается без перевода — входящие datetime (тест-драйв, бронь) сначала
+  переводить в UTC (`astimezone(timezone.utc)`); naive datetime от клиента → 422.
+- **Enum:** в SQLite хранится как строка (VARCHAR); допустимые значения проверяют Pydantic-схемы
+  (CHECK в БД нет).
+- **JSON** вместо `JSONB` (поля `old_value` / `new_value` в `AuditLog`).
+- Запись — по одной транзакции за раз: uvicorn без `--workers`.

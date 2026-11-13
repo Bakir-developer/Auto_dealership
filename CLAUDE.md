@@ -5,7 +5,7 @@
 Отвечай пользователю на русском.
 
 ## Стек
-FastAPI · синхронный SQLAlchemy 2.0 · PostgreSQL 17 · Alembic · Pydantic v2 ·
+FastAPI · синхронный SQLAlchemy 2.0 · SQLite (файл `auto_salon.db`) · Alembic · Pydantic v2 ·
 passlib/bcrypt · python-jose (JWT access + refresh) · sqladmin · Docker + docker-compose + nginx ·
 pytest · black / isort / flake8.
 
@@ -36,6 +36,42 @@ tests/
 роутеры — `<entity>_router` с путями `/create`, `/list`, `/detail`, `/update/{id}`, `/delete/{id}`;
 `model_dump()` вместо `.dict()`; ошибки — `HTTPException` с текстом на русском.
 
+**Структура проекта зафиксирована — не создавать, не переименовывать и не перемещать файлы
+в `mysite/` без разрешения автора.** Новые файлы `mysite/api/<entity>.py` — только те, что прямо
+перечислены в текущем этапе `docs/ROADMAP.md`. Если кажется, что структуру нужно изменить, — спроси.
+
+## База данных
+- **SQLite**, файл `auto_salon.db` в корне проекта (в git не попадает: `*.db` в `.gitignore`).
+  URL: `DATABASE_URL=sqlite:///./auto_salon.db` (дефолт в `mysite/config.py`).
+- В Docker файл лежит в `./data` на хосте (bind-mount в `/app/data`), не теряется при пересборке.
+- `mysite/db/database.py`: `connect_args={'check_same_thread': False}` + listener на `connect`:
+  `PRAGMA foreign_keys=ON` (иначе SQLite не проверяет FK) и `PRAGMA busy_timeout=5000`.
+- `migrations/env.py`: `render_as_batch=True` (online и offline) — SQLite почти не умеет `ALTER TABLE`,
+  Alembic пересоздаёт таблицу через `batch_alter_table`.
+- **Сброс БД для разработки** (делает автор, агентам удаление `*.db` запрещено):
+  удалить `auto_salon.db` → `alembic upgrade head` → `python -m mysite.seed`.
+- Тесты — отдельный файл `test_auto_salon.db` (`TEST_DATABASE_URL`), рабочую БД не трогают.
+- Относительный путь `./auto_salon.db` считается от текущей папки — `alembic`, `uvicorn`, `seed`
+  запускать из корня проекта (иначе появится вторая пустая БД).
+
+### Особенности SQLite (учитывать в коде)
+- **Нет блокировки строк (row lock).** Бронь — атомарный
+  `UPDATE car SET status='reserved' WHERE id=:id AND status='available'`; `rowcount == 0` → 409
+  «Авто уже забронировано».
+- **Деньги:** `Numeric(14, 2)`, все расчёты только через `Decimal` (никаких `float`).
+- **Время:** хранить UTC; текущее время — `datetime.now(timezone.utc)` в Python. SQLite не хранит
+  часовой пояс и возвращает naive datetime — перед сравнением приводить к UTC
+  (`value.replace(tzinfo=timezone.utc)`), на часовые пояса БД не полагаться.
+  **При записи** SQLite просто отбрасывает tzinfo, не переводя в UTC: входящие aware datetime
+  (например, `start_time` с `+06:00`) перед записью приводить `value.astimezone(timezone.utc)`;
+  naive datetime от клиента — ошибка 422 (или явно трактовать как `Asia/Bishkek`).
+- **Enum:** в SQLite нет типов Enum — `sa.Enum` хранится как VARCHAR; допустимые значения
+  проверяет Pydantic-схема (CHECK в БД нет).
+- **JSON** вместо `JSONB`.
+- **Регистронезависимый поиск по кириллице** (`ilike`, `lower()`) в SQLite работает только для
+  латиницы — для фильтров каталога учитывать (нормализовать в Python или хранить поле в нижнем регистре).
+- Одна запись в момент времени → uvicorn без `--workers`.
+
 ## Окружение
 - **Windows 11 + PyCharm.** Виртуальное окружение: `.venv` (`.venv\Scripts\python.exe`).
 - Shell-инструменты: Bash (Git Bash) и PowerShell. Пути в командах — через `/` или в кавычках.
@@ -52,6 +88,7 @@ tests/
 | Применить | `alembic upgrade head` |
 | Откатить одну | `alembic downgrade -1` |
 | Миграции в docker | `docker compose exec fast_web alembic upgrade head` |
+| Первый админ | `python -m mysite.seed` (данные из `ADMIN_*` в `.env`) |
 | Тесты | `pytest -q` |
 | Форматирование | `black . && isort .` (PowerShell: `black .; isort .`) |
 | Линтер | `flake8` |
@@ -75,7 +112,8 @@ debugger (баги). Каждый агент первым делом читае�
 
 ## Хуки (`.claude/hooks/`, работают автоматически)
 - Блокируются: `rm -rf`, `DROP TABLE/DATABASE/SCHEMA`, `TRUNCATE`, `docker volume rm/prune`,
-  `docker compose down -v`, git-команды, меняющие историю/remote, и `gh`.
+  `docker compose down -v`, удаление файлов БД (`*.db`, `*.sqlite3`), git-команды,
+  меняющие историю/remote, и `gh`.
 - Запрещена запись в `.env` (кроме `.env.example`) и правка **закоммиченных** файлов
   `migrations/versions/` (новую ещё не закоммиченную миграцию править можно).
 - После правки `.py` — автоматически black + isort, затем flake8 (ошибки вернутся агенту — исправь).

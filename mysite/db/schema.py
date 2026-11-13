@@ -3,7 +3,7 @@ from datetime import datetime, time
 from decimal import Decimal
 from typing import Annotated, List
 
-from pydantic import AfterValidator, BaseModel, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, EmailStr, Field, StringConstraints
 
 from .models import (
     BodyType,
@@ -62,6 +62,8 @@ Percent = Annotated[Decimal, Field(ge=0, le=100, max_digits=5, decimal_places=2)
 Stars = Annotated[int, Field(ge=1, le=5)]
 Year = Annotated[int, Field(ge=1900, le=2100)]
 Mileage = Annotated[int, Field(ge=0)]
+Name50 = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
+Color = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=30)]
 
 
 # ---------- Auth ----------
@@ -113,6 +115,10 @@ class UserProfileUpdateSchema(BaseModel):
     profile_image: str | None = None
 
 
+class UserProfileDiscountLimitSchema(BaseModel):
+    discount_limit: Percent
+
+
 class UserProfileListSchema(BaseModel):
     id: int
     username: str
@@ -140,13 +146,13 @@ class UserProfileDetailSchema(BaseModel):
 
 
 class BrandCreateSchema(BaseModel):
-    brand_name: str = Field(min_length=1, max_length=50)
-    brand_logo: str | None = None
+    brand_name: Name50
+    brand_logo: str | None = Field(default=None, max_length=500)
 
 
 class BrandUpdateSchema(BaseModel):
-    brand_name: str | None = Field(default=None, min_length=1, max_length=50)
-    brand_logo: str | None = None
+    brand_name: Name50 | None = None
+    brand_logo: str | None = Field(default=None, max_length=500)
 
 
 class BrandListSchema(BaseModel):
@@ -166,12 +172,12 @@ class BrandDetailSchema(BaseModel):
 
 class CarModelCreateSchema(BaseModel):
     brand_id: int
-    model_name: str = Field(min_length=1, max_length=50)
+    model_name: Name50
 
 
 class CarModelUpdateSchema(BaseModel):
     brand_id: int | None = None
-    model_name: str | None = Field(default=None, min_length=1, max_length=50)
+    model_name: Name50 | None = None
 
 
 class CarModelListSchema(BaseModel):
@@ -193,12 +199,12 @@ class CarImageCreateSchema(BaseModel):
     car_id: int
     car_image: str
     is_main: bool = False
-    position: int = Field(default=0, ge=0)
+    position: int = Field(default=0, ge=0, le=1000)
 
 
 class CarImageUpdateSchema(BaseModel):
     is_main: bool | None = None
-    position: int | None = Field(default=None, ge=0)
+    position: int | None = Field(default=None, ge=0, le=1000)
 
 
 class CarImageListSchema(BaseModel):
@@ -225,7 +231,7 @@ class CarCreateSchema(BaseModel):
     car_model_id: int
     year: Year
     body_type: BodyType
-    color: str = Field(max_length=30)
+    color: Color
     engine_volume: Decimal | None = Field(default=None, gt=0, max_digits=3, decimal_places=1)
     fuel_type: FuelType
     transmission: Transmission
@@ -235,11 +241,11 @@ class CarCreateSchema(BaseModel):
     status: ManualCarStatus = CarStatus.available
     price: Money
     currency: Currency = Currency.KGS
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=5000)
     mileage: Mileage = 0
     owners_count: int | None = Field(default=None, ge=0)
     has_accidents: bool | None = None
-    accident_notes: str | None = None
+    accident_notes: str | None = Field(default=None, max_length=5000)
     customs_cleared: bool = False
     registered_in_kr: bool = False
 
@@ -247,7 +253,7 @@ class CarCreateSchema(BaseModel):
 class CarUpdateSchema(BaseModel):
     year: Year | None = None
     body_type: BodyType | None = None
-    color: str | None = Field(default=None, max_length=30)
+    color: Color | None = None
     engine_volume: Decimal | None = Field(default=None, gt=0, max_digits=3, decimal_places=1)
     fuel_type: FuelType | None = None
     transmission: Transmission | None = None
@@ -256,11 +262,11 @@ class CarUpdateSchema(BaseModel):
     status: ManualCarStatus | None = None
     price: Money | None = None
     currency: Currency | None = None
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=5000)
     mileage: Mileage | None = None
     owners_count: int | None = Field(default=None, ge=0)
     has_accidents: bool | None = None
-    accident_notes: str | None = None
+    accident_notes: str | None = Field(default=None, max_length=5000)
     customs_cleared: bool | None = None
     registered_in_kr: bool | None = None
 
