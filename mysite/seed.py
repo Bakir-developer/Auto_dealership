@@ -48,7 +48,6 @@ def create_salon_settings(db: Session) -> SalonSettings:
         phone_number=ADMIN_PHONE,
         work_start=time(9, 0),
         work_end=time(18, 0),
-        test_drive_minutes=60,
         reservation_hours=48,
         default_discount_limit=Decimal('3'),
     )

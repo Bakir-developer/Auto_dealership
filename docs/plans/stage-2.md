@@ -237,7 +237,7 @@ services:
     Если существующий пользователь с этим username не admin — `sys.exit(1)` с сообщением (не повышать роль молча).
   - `create_salon_settings(db) -> SalonSettings` — если записи `id=1` нет, создать с дефолтами:
     `salon_name='Auto Salon'`, `address='г. Бишкек'`, `phone_number=ADMIN_PHONE`,
-    `work_start=time(9, 0)`, `work_end=time(18, 0)`, `test_drive_minutes=60`, `reservation_hours=48`,
+    `work_start=time(9, 0)`, `work_end=time(18, 0)`, `reservation_hours=48`,
     `default_discount_limit=3`. Существующую запись не трогать. **[дефолт]** значения — правятся в sqladmin.
   - `main()` — `SessionLocal()`, обе функции, `commit`, `finally db.close()`; `if __name__ == '__main__': main()`.
 - Идемпотентен: повторный запуск ничего не дублирует.
@@ -363,7 +363,7 @@ services:
 
 ## Не делаем в этом этапе
 
-- Роутеры `brand`, `car_model`, `car`, `car_image` (этап 3); `lead`, `test_drive`, `notification` (этап 4);
+- Роутеры `brand`, `car_model`, `car`, `car_image` (этап 3); `lead`, `notification` (этап 4);
   `deal`, `discount`, фоновая задача брони, `AuditLog` (этап 5); `trade_in`, `favorite`, `review`,
   `credit`, `statistic` (этап 6).
 - API для `SalonSettings` (детально/изменение) — только seed + sqladmin. Если нужен эндпоинт — спросить автора.

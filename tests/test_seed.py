@@ -49,7 +49,6 @@ def test_create_salon_settings_once(db, monkeypatch):
     assert first.default_discount_limit == Decimal('3')
     assert first.work_start == time(9, 0)
     assert first.work_end == time(18, 0)
-    assert first.test_drive_minutes == 60
     assert first.reservation_hours == 48
 
     first.salon_name = 'Changed'

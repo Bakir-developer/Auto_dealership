@@ -128,21 +128,72 @@ def test_admin_lead_list_ok(client, admin_session_local, admin, make_lead):
     assert str(lead_db.id) in response.text
 
 
-def test_admin_test_drive_list_ok(client, admin_session_local, admin, make_car, make_test_drive):
-    make_test_drive(make_car())
-    admin_login(client, admin.username)
-    assert client.get('/admin/test-drive/list', follow_redirects=False).status_code == 200
-
-
-@pytest.mark.parametrize('path', ['lead', 'test-drive'])
-def test_admin_crm_views_readonly(client, admin_session_local, admin, make_car, make_lead, make_test_drive, path):
-    obj = make_lead() if path == 'lead' else make_test_drive(make_car())
+@pytest.mark.parametrize('path', ['lead'])
+def test_admin_crm_views_readonly(client, admin_session_local, admin, make_lead, path):
+    obj = make_lead()
     admin_login(client, admin.username)
     assert client.get(f'/admin/{path}/create', follow_redirects=False).status_code == 403
     assert client.get(f'/admin/{path}/edit/{obj.id}', follow_redirects=False).status_code == 403
     assert client.delete(f'/admin/{path}/delete?pks={obj.id}', follow_redirects=False).status_code == 403
 
 
-@pytest.mark.parametrize('path', ['lead', 'test-drive'])
+@pytest.mark.parametrize('path', ['lead'])
 def test_admin_crm_list_without_login_redirects(client, admin_session_local, path):
+    assert client.get(f'/admin/{path}/list', follow_redirects=False).status_code in (302, 303, 307)
+
+
+def test_admin_deal_list_ok(client, admin_session_local, admin, make_deal):
+    deal_db = make_deal()
+    admin_login(client, admin.username)
+    response = client.get('/admin/deal/list', follow_redirects=False)
+    assert response.status_code == 200
+    assert str(deal_db.id) in response.text
+
+
+def test_admin_discount_request_list_ok(client, admin_session_local, admin, make_discount_request):
+    obj = make_discount_request()
+    admin_login(client, admin.username)
+    response = client.get('/admin/discount-request/list', follow_redirects=False)
+    assert response.status_code == 200
+    assert str(obj.id) in response.text
+
+
+def test_admin_audit_log_list_ok(client, admin_session_local, admin, db):
+    from mysite.api.deal import create_audit_log
+
+    create_audit_log(db, admin.id, 'test_admin_view_action', 'deal', 1)
+    db.commit()
+    admin_login(client, admin.username)
+    response = client.get('/admin/audit-log/list', follow_redirects=False)
+    assert response.status_code == 200
+    assert 'test_admin_view_action' in response.text
+
+
+@pytest.mark.parametrize('path', ['deal', 'discount-request', 'audit-log'])
+def test_admin_sales_views_readonly(client, admin_session_local, admin, make_deal, db, path):
+    from mysite.api.deal import create_audit_log
+    from mysite.db.models import AuditLog
+
+    make_discount = path == 'discount-request'
+    if make_discount:
+        from mysite.db.models import DiscountRequest
+
+        obj = DiscountRequest(deal_id=make_deal().id, seller_id=admin.id, requested_percent=5)
+        db.add(obj)
+        db.commit()
+    elif path == 'deal':
+        obj = make_deal()
+    else:
+        create_audit_log(db, admin.id, 'x', 'deal', 1)
+        db.commit()
+        obj = db.query(AuditLog).first()
+    admin_login(client, admin.username)
+    assert client.get(f'/admin/{path}/list', follow_redirects=False).status_code == 200
+    assert client.get(f'/admin/{path}/create', follow_redirects=False).status_code == 403
+    assert client.get(f'/admin/{path}/edit/{obj.id}', follow_redirects=False).status_code == 403
+    assert client.delete(f'/admin/{path}/delete?pks={obj.id}', follow_redirects=False).status_code == 403
+
+
+@pytest.mark.parametrize('path', ['deal', 'discount-request', 'audit-log'])
+def test_admin_sales_views_without_login_redirect(client, admin_session_local, path):
     assert client.get(f'/admin/{path}/list', follow_redirects=False).status_code in (302, 303, 307)

@@ -51,7 +51,7 @@ Auto_salon/
 ```
 
 Имена файлов роутеров — snake_case по сущности: `car.py`, `car_model.py`,
-`car_image.py`, `test_drive.py`, `trade_in.py`.
+`car_image.py`, `trade_in.py`.
 
 ---
 
@@ -252,7 +252,7 @@ class RefreshToken(Base):
 
 Имена полей: `brand_name`, `model_name`, `car_image`, `stars`, `comment`,
 `profile_image`, `phone_number`. Имена таблиц — snake_case единственного числа
-(`user_profile`, `car_model`, `price_history`, `test_drive`).
+(`user_profile`, `car_model`, `price_history`, `trade_in`).
 
 ---
 
@@ -400,7 +400,7 @@ async def delete_brand(brand_id: int, db: Session = Depends(get_db)):
 ```
 
 Правила:
-- Имя роутера: `<entity>_router`; `prefix='/<entity>'` (kebab-case для составных: `/car-model`, `/test-drive`),
+- Имя роутера: `<entity>_router`; `prefix='/<entity>'` (kebab-case для составных: `/car-model`, `/lead-note`),
   `tags=['<Entity>']`.
 - Пути строго: `POST /create`, `GET /list`, `GET /detail?<entity>_id=`, `PUT /update/{id}`,
   `DELETE /delete/{id}`. Дополнительные действия — глаголом: `POST /deal/reserve/{deal_id}`,

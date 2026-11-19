@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -5,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from mysite.api.auth import get_password_hash
+from mysite.api.deal import create_audit_log
 from mysite.api.dependencies import get_current_user, require_role
 from mysite.db.database import get_db
 from mysite.db.models import RefreshToken, SalonSettings, UserProfile, UserRole
@@ -165,7 +167,17 @@ async def update_discount_limit(
     if user_db.role != UserRole.seller:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Лимит скидки задаётся только продавцу')
 
+    old_limit = user_db.discount_limit
     user_db.discount_limit = user_data.discount_limit
+    create_audit_log(
+        db,
+        current_user.id,
+        'user_discount_limit',
+        'user_profile',
+        user_db.id,
+        {'discount_limit': old_limit.quantize(Decimal('0.01'))},
+        {'discount_limit': user_data.discount_limit.quantize(Decimal('0.01'))},
+    )
     db.commit()
     db.refresh(user_db)
     return user_db

@@ -18,7 +18,6 @@ from .models import (
     LeadType,
     NotificationType,
     Steering,
-    TestDriveStatus,
     TradeInStatus,
     Transmission,
     UserRole,
@@ -67,6 +66,7 @@ ManualCarStatus = Annotated[CarStatus, AfterValidator(validate_manual_car_status
 Vin = Annotated[str, AfterValidator(validate_vin)]
 Money = Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=2)]
 Percent = Annotated[Decimal, Field(ge=0, le=100, max_digits=5, decimal_places=2)]
+DiscountPercent = Annotated[Decimal, Field(gt=0, lt=100, max_digits=5, decimal_places=2)]
 Stars = Annotated[int, Field(ge=1, le=5)]
 Year = Annotated[int, Field(ge=1900, le=2100)]
 Mileage = Annotated[int, Field(ge=0)]
@@ -412,56 +412,17 @@ class LeadNoteDetailSchema(BaseModel):
     created_at: UtcDatetimeOut
 
 
-# ---------- TestDrive (end_time считает сервер по test_drive_minutes) ----------
-
-
-class TestDriveCreateSchema(BaseModel):
-    car_id: int
-    start_time: UtcDatetime
-
-
-class TestDriveUpdateSchema(BaseModel):
-    start_time: UtcDatetime | None = None
-
-
-class TestDriveAssignSchema(BaseModel):
-    seller_id: int
-
-
-class TestDriveListSchema(BaseModel):
-    id: int
-    car_id: int
-    client_id: int
-    seller_id: int | None
-    start_time: UtcDatetimeOut
-    end_time: UtcDatetimeOut
-    status: TestDriveStatus
-    created_at: UtcDatetimeOut
-
-
-class TestDriveDetailSchema(BaseModel):
-    id: int
-    car_id: int
-    client_id: int
-    seller_id: int | None
-    start_time: UtcDatetimeOut
-    end_time: UtcDatetimeOut
-    status: TestDriveStatus
-    created_at: UtcDatetimeOut
-
-
-# ---------- Deal (seller_id, base_price, final_price, currency, status — сервер) ----------
+# ---------- Deal (base_price, final_price, discount_percent, currency, status — сервер) ----------
 
 
 class DealCreateSchema(BaseModel):
     car_id: int
     client_id: int
-    discount_percent: Percent = Decimal('0')
+    seller_id: int | None = None  # учитывается только у admin; у seller берётся из токена
 
 
-class DealUpdateSchema(BaseModel):
-    discount_percent: Percent | None = None
-    cancel_reason: str | None = None
+class DealCancelSchema(BaseModel):
+    cancel_reason: Text2000
 
 
 class DealListSchema(BaseModel):
@@ -469,10 +430,11 @@ class DealListSchema(BaseModel):
     car_id: int
     client_id: int
     seller_id: int
+    discount_percent: Decimal
     final_price: Decimal
     currency: Currency
     status: DealStatus
-    created_at: datetime
+    created_at: UtcDatetimeOut
 
 
 class DealDetailSchema(BaseModel):
@@ -485,25 +447,24 @@ class DealDetailSchema(BaseModel):
     final_price: Decimal
     currency: Currency
     status: DealStatus
-    reserved_until: datetime | None
-    paid_at: datetime | None
-    delivered_at: datetime | None
+    reserved_until: UtcDatetimeOut | None
+    paid_at: UtcDatetimeOut | None
+    delivered_at: UtcDatetimeOut | None
     cancel_reason: str | None
-    created_at: datetime
+    created_at: UtcDatetimeOut
 
 
-# ---------- DiscountRequest ----------
+# ---------- DiscountRequest (seller_id, status, decided_* — сервер) ----------
 
 
 class DiscountRequestCreateSchema(BaseModel):
     deal_id: int
-    requested_percent: Annotated[Decimal, Field(gt=0, le=100, max_digits=5, decimal_places=2)]
-    comment: str | None = None
+    requested_percent: DiscountPercent
+    comment: Text2000 | None = None
 
 
-class DiscountRequestUpdateSchema(BaseModel):
-    status: DiscountStatus | None = None
-    comment: str | None = None
+class DiscountRequestDecisionSchema(BaseModel):
+    comment: Text2000 | None = None
 
 
 class DiscountRequestListSchema(BaseModel):
@@ -512,6 +473,7 @@ class DiscountRequestListSchema(BaseModel):
     seller_id: int
     requested_percent: Decimal
     status: DiscountStatus
+    decided_by_id: int | None
 
 
 class DiscountRequestDetailSchema(BaseModel):
@@ -521,7 +483,7 @@ class DiscountRequestDetailSchema(BaseModel):
     requested_percent: Decimal
     status: DiscountStatus
     decided_by_id: int | None
-    decided_at: datetime | None
+    decided_at: UtcDatetimeOut | None
     comment: str | None
 
 
@@ -676,7 +638,7 @@ class AuditLogListSchema(BaseModel):
     action: str
     entity_name: str
     entity_id: int | None
-    created_at: datetime
+    created_at: UtcDatetimeOut
 
 
 class AuditLogDetailSchema(BaseModel):
@@ -687,7 +649,7 @@ class AuditLogDetailSchema(BaseModel):
     entity_id: int | None
     old_value: dict | None
     new_value: dict | None
-    created_at: datetime
+    created_at: UtcDatetimeOut
 
 
 # ---------- SalonSettings (одна запись) ----------
@@ -699,7 +661,6 @@ class SalonSettingsUpdateSchema(BaseModel):
     phone_number: PhoneNumber | None = None
     work_start: time | None = None
     work_end: time | None = None
-    test_drive_minutes: int | None = Field(default=None, ge=15, le=240)
     reservation_hours: int | None = Field(default=None, ge=1, le=720)
     default_discount_limit: Percent | None = None
 
@@ -711,6 +672,5 @@ class SalonSettingsDetailSchema(BaseModel):
     phone_number: str
     work_start: time
     work_end: time
-    test_drive_minutes: int
     reservation_hours: int
     default_discount_limit: Decimal

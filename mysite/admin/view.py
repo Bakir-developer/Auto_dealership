@@ -1,6 +1,17 @@
 from sqladmin import ModelView
 
-from mysite.db.models import Brand, Car, CarModel, Lead, PriceHistory, SalonSettings, TestDrive, UserProfile
+from mysite.db.models import (
+    AuditLog,
+    Brand,
+    Car,
+    CarModel,
+    Deal,
+    DiscountRequest,
+    Lead,
+    PriceHistory,
+    SalonSettings,
+    UserProfile,
+)
 
 
 class UserProfileView(ModelView, model=UserProfile):
@@ -20,8 +31,6 @@ class UserProfileView(ModelView, model=UserProfile):
         UserProfile.email,
         UserProfile.phone_number,
         UserProfile.role,
-        UserProfile.is_active,
-        UserProfile.discount_limit,
     ]
     can_create = False
     can_delete = False
@@ -35,7 +44,6 @@ class SalonSettingsView(ModelView, model=SalonSettings):
         SalonSettings.phone_number,
         SalonSettings.work_start,
         SalonSettings.work_end,
-        SalonSettings.test_drive_minutes,
         SalonSettings.reservation_hours,
         SalonSettings.default_discount_limit,
     ]
@@ -45,7 +53,6 @@ class SalonSettingsView(ModelView, model=SalonSettings):
         SalonSettings.phone_number,
         SalonSettings.work_start,
         SalonSettings.work_end,
-        SalonSettings.test_drive_minutes,
         SalonSettings.reservation_hours,
         SalonSettings.default_discount_limit,
     ]
@@ -116,16 +123,50 @@ class LeadView(ModelView, model=Lead):
     can_delete = False
 
 
-class TestDriveView(ModelView, model=TestDrive):
+class DealView(ModelView, model=Deal):
     column_list = [
-        TestDrive.id,
-        TestDrive.car_id,
-        TestDrive.client_id,
-        TestDrive.seller_id,
-        TestDrive.start_time,
-        TestDrive.end_time,
-        TestDrive.status,
+        Deal.id,
+        Deal.car_id,
+        Deal.client_id,
+        Deal.seller_id,
+        Deal.final_price,
+        Deal.currency,
+        Deal.status,
+        Deal.reserved_until,
+        Deal.created_at,
+        Deal.deleted_at,
     ]
+    # только чтение: правка в панели обошла бы машину состояний, бронь и расчёт цены
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+
+class DiscountRequestView(ModelView, model=DiscountRequest):
+    column_list = [
+        DiscountRequest.id,
+        DiscountRequest.deal_id,
+        DiscountRequest.seller_id,
+        DiscountRequest.requested_percent,
+        DiscountRequest.status,
+        DiscountRequest.decided_by_id,
+        DiscountRequest.decided_at,
+    ]
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+
+class AuditLogView(ModelView, model=AuditLog):
+    column_list = [
+        AuditLog.id,
+        AuditLog.user_id,
+        AuditLog.action,
+        AuditLog.entity_name,
+        AuditLog.entity_id,
+        AuditLog.created_at,
+    ]
+    column_default_sort = (AuditLog.id, True)
     can_create = False
     can_edit = False
     can_delete = False

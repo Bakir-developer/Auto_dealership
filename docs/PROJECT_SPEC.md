@@ -8,7 +8,7 @@
 - Валюта: `KGS` по умолчанию; у авто и сделки есть поле `currency` (`KGS` | `USD`).
 - Деньги — `Numeric(14, 2)`.
 - Телефон — формат `+996XXXXXXXXX`.
-- Время в БД — **UTC**. Часовой пояс салона — `Asia/Bishkek` (рабочие часы, тест-драйвы считаются в нём).
+- Время в БД — **UTC**. Часовой пояс салона — `Asia/Bishkek` (рабочие часы считаются в нём).
 - Ошибки для пользователя — **на русском**.
 
 ## 2. Стек
@@ -32,7 +32,6 @@ python-jose (JWT access + refresh), sqladmin, Docker + docker-compose + nginx, p
 - Добавляет/редактирует авто и фото.
 - Меняет цену — изменение пишется в `PriceHistory`.
 - Берёт заявки в работу, пишет заметки по клиенту (`LeadNote`).
-- Тест-драйвы.
 - Создаёт сделки, бронирует, отмечает оплату и выдачу.
 - Скидка до своего `discount_limit`; выше — запрос админу (`DiscountRequest`).
 - Своя статистика.
@@ -44,7 +43,6 @@ python-jose (JWT access + refresh), sqladmin, Docker + docker-compose + nginx, p
 - Каталог (доступен и **без входа**).
 - Избранное.
 - Сравнение — до 4 авто.
-- Запись на тест-драйв.
 - Заявка на покупку.
 - Trade-in.
 - Кредитный калькулятор.
@@ -66,13 +64,12 @@ python-jose (JWT access + refresh), sqladmin, Docker + docker-compose + nginx, p
 | DriveType | front, rear, full |
 | Steering | left, right |
 | Currency | KGS, USD |
-| LeadType | purchase, test_drive, trade_in, question |
+| LeadType | purchase, trade_in, question |
 | LeadStatus | new, in_progress, closed, rejected |
-| TestDriveStatus | scheduled, confirmed, completed, cancelled |
 | DealStatus | new, in_progress, reserved, paid, delivered, cancelled |
 | DiscountStatus | pending, approved, rejected |
 | TradeInStatus | new, evaluating, offered, accepted, rejected |
-| NotificationType | lead, test_drive, deal, discount, reservation, system |
+| NotificationType | lead, deal, discount, reservation, system |
 
 ### 4.2 Таблицы
 
@@ -100,8 +97,6 @@ created_at, updated_at, deleted_at.
 
 **LeadNote**: lead_id, seller_id, note, created_at.
 
-**TestDrive**: car_id, client_id, seller_id (nullable), start_time, end_time, status, created_at.
-
 **Deal**: car_id, client_id, seller_id, base_price, discount_percent, final_price, currency,
 status, reserved_until, paid_at, delivered_at, cancel_reason, created_at, deleted_at.
 
@@ -121,7 +116,7 @@ estimated_price, currency, status, seller_id (nullable), created_at.
 **AuditLog**: user_id, action, entity_name, entity_id, old_value (JSON), new_value (JSON), created_at.
 
 **SalonSettings** (одна запись): salon_name, address, phone_number, work_start, work_end,
-test_drive_minutes (60), reservation_hours (48), default_discount_limit (3).
+reservation_hours (48), default_discount_limit (3).
 
 ## 5. Бизнес-правила
 
@@ -135,9 +130,7 @@ test_drive_minutes (60), reservation_hours (48), default_discount_limit (3).
 3. **Истечение брони:** через `reservation_hours` без оплаты → сделка `cancelled`,
    авто `available`, уведомления продавцу и клиенту. Реализация — фоновая задача
    (по образцу `game_scheduler` из mafia_app).
-4. **Тест-драйвы:** только в рабочие часы салона (`work_start`–`work_end`, Asia/Bishkek),
-   без пересечений по авто и по продавцу, не на `reserved`/`sold` авто, не в прошлое.
-   Длительность — `test_drive_minutes`.
+4. *(удалено: тест-драйвы убраны из проекта)*
 5. **Скидка:** `<= discount_limit` продавца — применяется сразу;
    больше — создаётся `DiscountRequest` админу (`pending`).
 6. **`final_price` считает сервер** (`base_price * (1 - discount_percent / 100)`), клиент его не передаёт.
@@ -165,7 +158,7 @@ test_drive_minutes (60), reservation_hours (48), default_discount_limit (3).
   кредитный калькулятор) — только через `Decimal`, без `float`.
 - **Время:** хранится в UTC; текущее время — `datetime.now(timezone.utc)` в Python. SQLite возвращает
   naive datetime — перед сравнением приводить к UTC. На часовые пояса БД не полагаться.
-  При записи tzinfo отбрасывается без перевода — входящие datetime (тест-драйв, бронь) сначала
+  При записи tzinfo отбрасывается без перевода — входящие datetime (бронь) сначала
   переводить в UTC (`astimezone(timezone.utc)`); naive datetime от клиента → 422.
 - **Enum:** в SQLite хранится как строка (VARCHAR); допустимые значения проверяют Pydantic-схемы
   (CHECK в БД нет).

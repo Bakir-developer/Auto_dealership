@@ -32,7 +32,6 @@ LEAD_TRANSITIONS = {
 }
 LEAD_TYPE_TEXT = {
     LeadType.purchase: 'покупка',
-    LeadType.test_drive: 'тест-драйв',
     LeadType.trade_in: 'trade-in',
     LeadType.question: 'вопрос',
 }
@@ -79,10 +78,6 @@ async def create_lead(
 ):
     if lead_data.car_id is not None:
         get_car_or_404(lead_data.car_id, db, current_user, only_visible=True)
-    elif lead_data.lead_type == LeadType.test_drive:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail='Для заявки на тест-драйв укажите автомобиль'
-        )
 
     if lead_data.car_id is not None:
         duplicate_db = (

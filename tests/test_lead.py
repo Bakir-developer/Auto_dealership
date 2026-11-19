@@ -98,11 +98,6 @@ def test_create_lead_sold_car_404(client, client_user, auth_headers, make_car):
     assert response.status_code == 404
 
 
-def test_create_lead_test_drive_without_car_400(client, client_user, auth_headers):
-    response = client.post('/lead/create', json={'lead_type': 'test_drive'}, headers=auth_headers(client_user))
-    assert response.status_code == 400
-
-
 def test_create_lead_question_without_car_ok(client, client_user, auth_headers):
     response = client.post('/lead/create', json={'lead_type': 'question'}, headers=auth_headers(client_user))
     assert response.status_code == 200
@@ -129,7 +124,7 @@ def test_create_lead_other_type_same_car_ok(client, client_user, auth_headers, m
     car_db = make_car()
     make_lead(car_id=car_db.id, lead_type=LeadType.purchase)
     response = client.post(
-        '/lead/create', json={'car_id': car_db.id, 'lead_type': 'test_drive'}, headers=auth_headers(client_user)
+        '/lead/create', json={'car_id': car_db.id, 'lead_type': 'trade_in'}, headers=auth_headers(client_user)
     )
     assert response.status_code == 200
 

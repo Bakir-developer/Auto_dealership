@@ -30,6 +30,15 @@ def notify_active_sellers(
             create_notification(db, seller_id, notification_type, text)
 
 
+def notify_active_admins(
+    db: Session, notification_type: NotificationType, text: str, exclude_user_id: int | None = None
+):
+    admins_db = db.query(UserProfile.id).filter(UserProfile.role == UserRole.admin, UserProfile.is_active.is_(True))
+    for (admin_id,) in admins_db.all():
+        if admin_id != exclude_user_id:
+            create_notification(db, admin_id, notification_type, text)
+
+
 def get_notification_or_404(notification_id: int, db: Session, current_user: UserProfile) -> Notification:
     notification_db = (
         db.query(Notification)

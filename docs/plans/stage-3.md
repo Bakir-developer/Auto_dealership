@@ -20,7 +20,7 @@
   сохранение файла) — внутри соответствующих роутеров.
 - **Изменений моделей нет. Миграции нет.** Все нужные поля, индексы и ограничения уже есть
   в `initial` (`f907a8edf483`).
-- Ничего из этапов 4+ (Lead, TestDrive, Notification, Deal, DiscountRequest, бронь, AuditLog,
+- Ничего из этапов 4+ (Lead, Notification, Deal, DiscountRequest, бронь, AuditLog,
   TradeIn, Favorite, Review, credit, statistic).
 
 Текущее состояние (проверено): этап 2 завершён — есть `mysite/api/{auth,dependencies,user}.py`,
@@ -468,7 +468,7 @@ STYLE_GUIDE §10 приводит `CarView`; в этапе 2 решили доб
 
 ## Не делаем в этом этапе
 
-- `lead`, `test_drive`, `notification` (этап 4); `deal`, `discount`, бронь атомарным `UPDATE`, фоновая задача
+- `lead`, `notification` (этап 4); `deal`, `discount`, бронь атомарным `UPDATE`, фоновая задача
   истечения брони, `AuditLog` (этап 5); `trade_in` + `TradeInImage`, `favorite`, `review`, `credit` (кредитный
   калькулятор и сравнение до 4 авто), `statistic` (этап 6).
 - Переходы `reserved`/`sold` у авто — только через сделку (этап 5).

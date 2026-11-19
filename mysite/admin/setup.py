@@ -9,13 +9,15 @@ from mysite.db.database import SessionLocal, engine
 from mysite.db.models import UserProfile, UserRole
 
 from .view import (
+    AuditLogView,
     BrandView,
     CarModelView,
     CarView,
+    DealView,
+    DiscountRequestView,
     LeadView,
     PriceHistoryView,
     SalonSettingsView,
-    TestDriveView,
     UserProfileView,
 )
 
@@ -69,4 +71,6 @@ def setup_admin(app: FastAPI):
     admin.add_view(CarView)
     admin.add_view(PriceHistoryView)
     admin.add_view(LeadView)
-    admin.add_view(TestDriveView)
+    admin.add_view(DealView)
+    admin.add_view(DiscountRequestView)
+    admin.add_view(AuditLogView)

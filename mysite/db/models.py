@@ -88,7 +88,6 @@ class Currency(str, PyEnum):
 
 class LeadType(str, PyEnum):
     purchase = 'purchase'
-    test_drive = 'test_drive'
     trade_in = 'trade_in'
     question = 'question'
 
@@ -98,13 +97,6 @@ class LeadStatus(str, PyEnum):
     in_progress = 'in_progress'
     closed = 'closed'
     rejected = 'rejected'
-
-
-class TestDriveStatus(str, PyEnum):
-    scheduled = 'scheduled'
-    confirmed = 'confirmed'
-    completed = 'completed'
-    cancelled = 'cancelled'
 
 
 class DealStatus(str, PyEnum):
@@ -132,7 +124,6 @@ class TradeInStatus(str, PyEnum):
 
 class NotificationType(str, PyEnum):
     lead = 'lead'
-    test_drive = 'test_drive'
     deal = 'deal'
     discount = 'discount'
     reservation = 'reservation'
@@ -163,12 +154,6 @@ class UserProfile(Base):
     client_leads: Mapped[List['Lead']] = relationship('Lead', back_populates='client', foreign_keys='Lead.client_id')
     seller_leads: Mapped[List['Lead']] = relationship('Lead', back_populates='seller', foreign_keys='Lead.seller_id')
     lead_notes: Mapped[List['LeadNote']] = relationship('LeadNote', back_populates='seller')
-    client_test_drives: Mapped[List['TestDrive']] = relationship(
-        'TestDrive', back_populates='client', foreign_keys='TestDrive.client_id'
-    )
-    seller_test_drives: Mapped[List['TestDrive']] = relationship(
-        'TestDrive', back_populates='seller', foreign_keys='TestDrive.seller_id'
-    )
     client_deals: Mapped[List['Deal']] = relationship('Deal', back_populates='client', foreign_keys='Deal.client_id')
     seller_deals: Mapped[List['Deal']] = relationship('Deal', back_populates='seller', foreign_keys='Deal.seller_id')
     discount_requests: Mapped[List['DiscountRequest']] = relationship(
@@ -273,7 +258,6 @@ class Car(Base):
     images: Mapped[List['CarImage']] = relationship('CarImage', back_populates='car', cascade='all, delete-orphan')
     price_history: Mapped[List['PriceHistory']] = relationship('PriceHistory', back_populates='car')
     leads: Mapped[List['Lead']] = relationship('Lead', back_populates='car')
-    test_drives: Mapped[List['TestDrive']] = relationship('TestDrive', back_populates='car')
     deals: Mapped[List['Deal']] = relationship('Deal', back_populates='car')
     favorites: Mapped[List['Favorite']] = relationship('Favorite', back_populates='car', cascade='all, delete-orphan')
 
@@ -345,29 +329,6 @@ class LeadNote(Base):
 
     lead: Mapped['Lead'] = relationship('Lead', back_populates='notes')
     seller: Mapped['UserProfile'] = relationship('UserProfile', back_populates='lead_notes')
-
-
-class TestDrive(Base):
-    __tablename__ = 'test_drive'
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    car_id: Mapped[int] = mapped_column(ForeignKey('car.id'), index=True)
-    client_id: Mapped[int] = mapped_column(ForeignKey('user_profile.id'), index=True)
-    seller_id: Mapped[Optional[int]] = mapped_column(ForeignKey('user_profile.id'), nullable=True, index=True)
-    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    status: Mapped[TestDriveStatus] = mapped_column(Enum(TestDriveStatus), default=TestDriveStatus.scheduled)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    car: Mapped['Car'] = relationship('Car', back_populates='test_drives')
-    client: Mapped['UserProfile'] = relationship(
-        'UserProfile', back_populates='client_test_drives', foreign_keys=[client_id]
-    )
-    seller: Mapped[Optional['UserProfile']] = relationship(
-        'UserProfile', back_populates='seller_test_drives', foreign_keys=[seller_id]
-    )
-
-    __table_args__ = (CheckConstraint('end_time > start_time', name='ck_test_drive_time_order'),)
 
 
 class Deal(Base):
@@ -542,7 +503,6 @@ class SalonSettings(Base):
     phone_number: Mapped[str] = mapped_column(String(13))
     work_start: Mapped[time] = mapped_column(Time)
     work_end: Mapped[time] = mapped_column(Time)
-    test_drive_minutes: Mapped[int] = mapped_column(SmallInteger, default=60)
     reservation_hours: Mapped[int] = mapped_column(SmallInteger, default=48)
     default_discount_limit: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=3)
 

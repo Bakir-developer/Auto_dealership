@@ -23,7 +23,7 @@ model: opus
    публичен только каталог (list/detail авто, марки, модели), register, login, кредитный калькулятор.
    Register создаёт только `client` (роль из запроса игнорируется). Продавцов создаёт только admin.
    Заблокированный (`is_active=False`) не проходит auth.
-6. **IDOR:** client получает только свои Lead/TestDrive/Deal/TradeIn/Favorite/Review/Notification
+6. **IDOR:** client получает только свои Lead/Deal/TradeIn/Favorite/Review/Notification
    (фильтр по `client_id == current_user.id`, чужой → 404). Seller — только свои заявки/сделки.
    Проверь detail/update/delete по id.
 7. **Утечки в схемах ответа:** нет `password`, `token`, внутренних полей в `*DetailSchema`/`*ListSchema`;

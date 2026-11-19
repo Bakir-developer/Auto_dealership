@@ -1,12 +1,12 @@
 import os
-from datetime import datetime, time, timedelta, timezone
+from datetime import time
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 
 # Переменные окружения нужно выставить ДО импорта приложения (config читается при импорте).
 TEST_DATABASE_URL = os.getenv('TEST_DATABASE_URL', 'sqlite:///./test_auto_salon.db')
 assert 'test' in TEST_DATABASE_URL, 'TEST_DATABASE_URL должен указывать на тестовую БД'
 os.environ['DATABASE_URL'] = TEST_DATABASE_URL
+os.environ['RESERVATION_SCHEDULER_ENABLED'] = 'false'
 os.environ['SECRET_KEY'] = 'test-secret-key-for-pytest-only-0123456789'
 
 import pytest  # noqa: E402
@@ -16,13 +16,15 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from main import auto_app  # noqa: E402
 from mysite.admin.view import (  # noqa: E402
+    AuditLogView,
     BrandView,
     CarModelView,
     CarView,
+    DealView,
+    DiscountRequestView,
     LeadView,
     PriceHistoryView,
     SalonSettingsView,
-    TestDriveView,
     UserProfileView,
 )
 from mysite.api.auth import create_access_token, get_password_hash  # noqa: E402
@@ -33,6 +35,10 @@ from mysite.db.models import (  # noqa: E402
     Car,
     CarCondition,
     CarModel,
+    Deal,
+    DealStatus,
+    DiscountRequest,
+    DiscountStatus,
     DriveType,
     FuelType,
     Lead,
@@ -41,8 +47,6 @@ from mysite.db.models import (  # noqa: E402
     Notification,
     NotificationType,
     SalonSettings,
-    TestDrive,
-    TestDriveStatus,
     Transmission,
     UserProfile,
     UserRole,
@@ -162,6 +166,16 @@ def client_user(make_user):
 
 
 @pytest.fixture
+def seller2(make_user):
+    return make_user('seller2', UserRole.seller)
+
+
+@pytest.fixture
+def client2(make_user):
+    return make_user('client2', UserRole.client)
+
+
+@pytest.fixture
 def admin_session_local(monkeypatch, db):
     """sqladmin ходит в БД через mysite.admin.setup.SessionLocal - отдаем ему тестовую сессию."""
     monkeypatch.setattr('mysite.admin.setup.SessionLocal', lambda: SessionProxy(db))
@@ -173,7 +187,9 @@ def admin_session_local(monkeypatch, db):
         CarView,
         PriceHistoryView,
         LeadView,
-        TestDriveView,
+        DealView,
+        DiscountRequestView,
+        AuditLogView,
     ):
         monkeypatch.setattr(view, 'session_maker', staticmethod(lambda **kwargs: SessionProxy(db)))
     return db
@@ -240,9 +256,6 @@ def media_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
-SALON_TZ = ZoneInfo('Asia/Bishkek')
-
-
 @pytest.fixture
 def salon_settings(db):
     settings_db = SalonSettings(
@@ -252,33 +265,11 @@ def salon_settings(db):
         phone_number='+996700000000',
         work_start=time(9, 0),
         work_end=time(18, 0),
-        test_drive_minutes=60,
     )
     db.add(settings_db)
     db.commit()
     db.refresh(settings_db)
     return settings_db
-
-
-@pytest.fixture
-def slot_dt():
-    """slot_dt(days, hour, minute) -> aware datetime в Asia/Bishkek (дата относительно сегодняшней даты в Бишкеке)."""
-
-    def _slot_dt(days=1, hour=10, minute=0):
-        today = datetime.now(SALON_TZ).date()
-        return datetime.combine(today + timedelta(days=days), time(hour, minute), tzinfo=SALON_TZ)
-
-    return _slot_dt
-
-
-@pytest.fixture
-def future_slot(slot_dt):
-    """future_slot(days, hour, minute) -> ISO-строка с +06:00."""
-
-    def _future_slot(days=1, hour=10, minute=0):
-        return slot_dt(days, hour, minute).isoformat()
-
-    return _future_slot
 
 
 @pytest.fixture
@@ -296,28 +287,6 @@ def make_lead(db, client_user):
 
 
 @pytest.fixture
-def make_test_drive(db, client_user, slot_dt):
-    def _make_test_drive(car, **overrides):
-        start = overrides.pop('start', None) or slot_dt(1, 10, 0)
-        start = start.astimezone(timezone.utc)
-        data = dict(
-            car_id=car.id,
-            client_id=client_user.id,
-            start_time=start,
-            end_time=start + timedelta(minutes=60),
-            status=TestDriveStatus.scheduled,
-        )
-        data.update(overrides)
-        test_drive_db = TestDrive(**data)
-        db.add(test_drive_db)
-        db.commit()
-        db.refresh(test_drive_db)
-        return test_drive_db
-
-    return _make_test_drive
-
-
-@pytest.fixture
 def make_notification(db):
     def _make_notification(user, text='Тест', is_read=False, notification_type=NotificationType.system):
         notification_db = Notification(user_id=user.id, notification_type=notification_type, text=text, is_read=is_read)
@@ -327,3 +296,54 @@ def make_notification(db):
         return notification_db
 
     return _make_notification
+
+
+@pytest.fixture
+def make_deal(db, make_car, client_user, seller):
+    def _make_deal(**overrides):
+        if 'car' in overrides:
+            car_db = overrides.pop('car')
+        elif 'car_id' in overrides:
+            car_db = db.get(Car, overrides['car_id'])
+        else:
+            car_db = make_car()
+        data = dict(
+            car_id=car_db.id,
+            client_id=client_user.id,
+            seller_id=seller.id,
+            base_price=car_db.price,
+            discount_percent=Decimal('0'),
+            final_price=car_db.price,
+            currency=car_db.currency,
+            status=DealStatus.new,
+        )
+        data.update(overrides)
+        if 'base_price' in overrides and 'final_price' not in overrides:
+            data['final_price'] = data['base_price']
+        deal_db = Deal(**data)
+        db.add(deal_db)
+        db.commit()
+        db.refresh(deal_db)
+        return deal_db
+
+    return _make_deal
+
+
+@pytest.fixture
+def make_discount_request(db, make_deal, seller):
+    def _make_discount_request(**overrides):
+        if 'deal_id' not in overrides:
+            overrides['deal_id'] = make_deal().id
+        data = dict(
+            seller_id=seller.id,
+            requested_percent=Decimal('10'),
+            status=DiscountStatus.pending,
+        )
+        data.update(overrides)
+        discount_db = DiscountRequest(**data)
+        db.add(discount_db)
+        db.commit()
+        db.refresh(discount_db)
+        return discount_db
+
+    return _make_discount_request
