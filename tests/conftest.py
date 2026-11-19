@@ -1,5 +1,7 @@
 import os
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 # Переменные окружения нужно выставить ДО импорта приложения (config читается при импорте).
 TEST_DATABASE_URL = os.getenv('TEST_DATABASE_URL', 'sqlite:///./test_auto_salon.db')
@@ -17,8 +19,10 @@ from mysite.admin.view import (  # noqa: E402
     BrandView,
     CarModelView,
     CarView,
+    LeadView,
     PriceHistoryView,
     SalonSettingsView,
+    TestDriveView,
     UserProfileView,
 )
 from mysite.api.auth import create_access_token, get_password_hash  # noqa: E402
@@ -31,6 +35,14 @@ from mysite.db.models import (  # noqa: E402
     CarModel,
     DriveType,
     FuelType,
+    Lead,
+    LeadStatus,
+    LeadType,
+    Notification,
+    NotificationType,
+    SalonSettings,
+    TestDrive,
+    TestDriveStatus,
     Transmission,
     UserProfile,
     UserRole,
@@ -153,7 +165,16 @@ def client_user(make_user):
 def admin_session_local(monkeypatch, db):
     """sqladmin ходит в БД через mysite.admin.setup.SessionLocal - отдаем ему тестовую сессию."""
     monkeypatch.setattr('mysite.admin.setup.SessionLocal', lambda: SessionProxy(db))
-    for view in (UserProfileView, SalonSettingsView, BrandView, CarModelView, CarView, PriceHistoryView):
+    for view in (
+        UserProfileView,
+        SalonSettingsView,
+        BrandView,
+        CarModelView,
+        CarView,
+        PriceHistoryView,
+        LeadView,
+        TestDriveView,
+    ):
         monkeypatch.setattr(view, 'session_maker', staticmethod(lambda **kwargs: SessionProxy(db)))
     return db
 
@@ -217,3 +238,92 @@ def media_dir(tmp_path, monkeypatch):
     monkeypatch.setattr('mysite.api.car_image.MEDIA_DIR', str(tmp_path))
     (tmp_path / 'car_images').mkdir()
     return tmp_path
+
+
+SALON_TZ = ZoneInfo('Asia/Bishkek')
+
+
+@pytest.fixture
+def salon_settings(db):
+    settings_db = SalonSettings(
+        id=1,
+        salon_name='Test Salon',
+        address='Bishkek',
+        phone_number='+996700000000',
+        work_start=time(9, 0),
+        work_end=time(18, 0),
+        test_drive_minutes=60,
+    )
+    db.add(settings_db)
+    db.commit()
+    db.refresh(settings_db)
+    return settings_db
+
+
+@pytest.fixture
+def slot_dt():
+    """slot_dt(days, hour, minute) -> aware datetime в Asia/Bishkek (дата относительно сегодняшней даты в Бишкеке)."""
+
+    def _slot_dt(days=1, hour=10, minute=0):
+        today = datetime.now(SALON_TZ).date()
+        return datetime.combine(today + timedelta(days=days), time(hour, minute), tzinfo=SALON_TZ)
+
+    return _slot_dt
+
+
+@pytest.fixture
+def future_slot(slot_dt):
+    """future_slot(days, hour, minute) -> ISO-строка с +06:00."""
+
+    def _future_slot(days=1, hour=10, minute=0):
+        return slot_dt(days, hour, minute).isoformat()
+
+    return _future_slot
+
+
+@pytest.fixture
+def make_lead(db, client_user):
+    def _make_lead(**overrides):
+        data = dict(client_id=client_user.id, lead_type=LeadType.purchase, status=LeadStatus.new)
+        data.update(overrides)
+        lead_db = Lead(**data)
+        db.add(lead_db)
+        db.commit()
+        db.refresh(lead_db)
+        return lead_db
+
+    return _make_lead
+
+
+@pytest.fixture
+def make_test_drive(db, client_user, slot_dt):
+    def _make_test_drive(car, **overrides):
+        start = overrides.pop('start', None) or slot_dt(1, 10, 0)
+        start = start.astimezone(timezone.utc)
+        data = dict(
+            car_id=car.id,
+            client_id=client_user.id,
+            start_time=start,
+            end_time=start + timedelta(minutes=60),
+            status=TestDriveStatus.scheduled,
+        )
+        data.update(overrides)
+        test_drive_db = TestDrive(**data)
+        db.add(test_drive_db)
+        db.commit()
+        db.refresh(test_drive_db)
+        return test_drive_db
+
+    return _make_test_drive
+
+
+@pytest.fixture
+def make_notification(db):
+    def _make_notification(user, text='Тест', is_read=False, notification_type=NotificationType.system):
+        notification_db = Notification(user_id=user.id, notification_type=notification_type, text=text, is_read=is_read)
+        db.add(notification_db)
+        db.commit()
+        db.refresh(notification_db)
+        return notification_db
+
+    return _make_notification

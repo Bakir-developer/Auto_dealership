@@ -1,6 +1,6 @@
 from sqladmin import ModelView
 
-from mysite.db.models import Brand, Car, CarModel, PriceHistory, SalonSettings, UserProfile
+from mysite.db.models import Brand, Car, CarModel, Lead, PriceHistory, SalonSettings, TestDrive, UserProfile
 
 
 class UserProfileView(ModelView, model=UserProfile):
@@ -95,6 +95,36 @@ class PriceHistoryView(ModelView, model=PriceHistory):
         PriceHistory.new_price,
         PriceHistory.changed_by_id,
         PriceHistory.changed_at,
+    ]
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+
+class LeadView(ModelView, model=Lead):
+    column_list = [
+        Lead.id,
+        Lead.client_id,
+        Lead.car_id,
+        Lead.lead_type,
+        Lead.status,
+        Lead.seller_id,
+        Lead.created_at,
+    ]
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+
+class TestDriveView(ModelView, model=TestDrive):
+    column_list = [
+        TestDrive.id,
+        TestDrive.car_id,
+        TestDrive.client_id,
+        TestDrive.seller_id,
+        TestDrive.start_time,
+        TestDrive.end_time,
+        TestDrive.status,
     ]
     can_create = False
     can_edit = False

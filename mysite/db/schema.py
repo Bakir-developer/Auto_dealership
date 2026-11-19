@@ -1,9 +1,9 @@
 import re
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 from decimal import Decimal
 from typing import Annotated, List
 
-from pydantic import AfterValidator, BaseModel, EmailStr, Field, StringConstraints
+from pydantic import AfterValidator, AwareDatetime, BaseModel, EmailStr, Field, StringConstraints
 
 from .models import (
     BodyType,
@@ -53,6 +53,14 @@ def validate_manual_car_status(value: CarStatus | None) -> CarStatus | None:
     return value
 
 
+def to_utc(value: datetime) -> datetime:
+    return value.astimezone(timezone.utc)
+
+
+def mark_utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
 PhoneNumber = Annotated[str, AfterValidator(validate_phone)]
 Password = Annotated[str, Field(min_length=8, max_length=72), AfterValidator(validate_password)]
 ManualCarStatus = Annotated[CarStatus, AfterValidator(validate_manual_car_status)]
@@ -64,6 +72,10 @@ Year = Annotated[int, Field(ge=1900, le=2100)]
 Mileage = Annotated[int, Field(ge=0)]
 Name50 = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
 Color = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=30)]
+Text2000 = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+Text5000 = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)]
+UtcDatetime = Annotated[AwareDatetime, AfterValidator(to_utc)]
+UtcDatetimeOut = Annotated[datetime, AfterValidator(mark_utc)]
 
 
 # ---------- Auth ----------
@@ -340,12 +352,16 @@ class PriceHistoryDetailSchema(BaseModel):
 class LeadCreateSchema(BaseModel):
     car_id: int | None = None
     lead_type: LeadType
-    comment: str | None = None
+    comment: Text2000 | None = None
 
 
 class LeadUpdateSchema(BaseModel):
     status: LeadStatus | None = None
-    comment: str | None = None
+    comment: Text2000 | None = None
+
+
+class LeadAssignSchema(BaseModel):
+    seller_id: int
 
 
 class LeadListSchema(BaseModel):
@@ -355,7 +371,7 @@ class LeadListSchema(BaseModel):
     lead_type: LeadType
     status: LeadStatus
     seller_id: int | None
-    created_at: datetime
+    created_at: UtcDatetimeOut
 
 
 class LeadDetailSchema(BaseModel):
@@ -366,7 +382,7 @@ class LeadDetailSchema(BaseModel):
     status: LeadStatus
     seller_id: int | None
     comment: str | None
-    created_at: datetime
+    created_at: UtcDatetimeOut
 
 
 # ---------- LeadNote ----------
@@ -374,18 +390,18 @@ class LeadDetailSchema(BaseModel):
 
 class LeadNoteCreateSchema(BaseModel):
     lead_id: int
-    note: str = Field(min_length=1)
+    note: Text5000
 
 
 class LeadNoteUpdateSchema(BaseModel):
-    note: str | None = Field(default=None, min_length=1)
+    note: Text5000 | None = None
 
 
 class LeadNoteListSchema(BaseModel):
     id: int
     seller_id: int
     note: str
-    created_at: datetime
+    created_at: UtcDatetimeOut
 
 
 class LeadNoteDetailSchema(BaseModel):
@@ -393,7 +409,7 @@ class LeadNoteDetailSchema(BaseModel):
     lead_id: int
     seller_id: int
     note: str
-    created_at: datetime
+    created_at: UtcDatetimeOut
 
 
 # ---------- TestDrive (end_time считает сервер по test_drive_minutes) ----------
@@ -401,12 +417,15 @@ class LeadNoteDetailSchema(BaseModel):
 
 class TestDriveCreateSchema(BaseModel):
     car_id: int
-    start_time: datetime
+    start_time: UtcDatetime
 
 
 class TestDriveUpdateSchema(BaseModel):
-    start_time: datetime | None = None
-    status: TestDriveStatus | None = None
+    start_time: UtcDatetime | None = None
+
+
+class TestDriveAssignSchema(BaseModel):
+    seller_id: int
 
 
 class TestDriveListSchema(BaseModel):
@@ -414,9 +433,10 @@ class TestDriveListSchema(BaseModel):
     car_id: int
     client_id: int
     seller_id: int | None
-    start_time: datetime
-    end_time: datetime
+    start_time: UtcDatetimeOut
+    end_time: UtcDatetimeOut
     status: TestDriveStatus
+    created_at: UtcDatetimeOut
 
 
 class TestDriveDetailSchema(BaseModel):
@@ -424,10 +444,10 @@ class TestDriveDetailSchema(BaseModel):
     car_id: int
     client_id: int
     seller_id: int | None
-    start_time: datetime
-    end_time: datetime
+    start_time: UtcDatetimeOut
+    end_time: UtcDatetimeOut
     status: TestDriveStatus
-    created_at: datetime
+    created_at: UtcDatetimeOut
 
 
 # ---------- Deal (seller_id, base_price, final_price, currency, status — сервер) ----------
@@ -635,7 +655,7 @@ class NotificationListSchema(BaseModel):
     notification_type: NotificationType
     text: str
     is_read: bool
-    created_at: datetime
+    created_at: UtcDatetimeOut
 
 
 class NotificationDetailSchema(BaseModel):
@@ -644,7 +664,7 @@ class NotificationDetailSchema(BaseModel):
     notification_type: NotificationType
     text: str
     is_read: bool
-    created_at: datetime
+    created_at: UtcDatetimeOut
 
 
 # ---------- AuditLog (создаётся сервером, только чтение) ----------

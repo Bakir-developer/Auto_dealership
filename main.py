@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from mysite.admin.setup import setup_admin
-from mysite.api import auth, brand, car, car_image, car_model, user
+from mysite.api import auth, brand, car, car_image, car_model, lead, notification, test_drive, user
 from mysite.config import MEDIA_DIR
 
 os.makedirs(os.path.join(MEDIA_DIR, 'car_images'), exist_ok=True)
@@ -25,6 +25,10 @@ auto_app.include_router(brand.brand_router)
 auto_app.include_router(car_model.car_model_router)
 auto_app.include_router(car.car_router)
 auto_app.include_router(car_image.car_image_router)
+auto_app.include_router(lead.lead_router)
+auto_app.include_router(lead.lead_note_router)
+auto_app.include_router(test_drive.test_drive_router)
+auto_app.include_router(notification.notification_router)
 
 # для локального запуска без nginx; в docker /media/ отдаёт nginx
 auto_app.mount('/media', StaticFiles(directory=MEDIA_DIR), name='media')

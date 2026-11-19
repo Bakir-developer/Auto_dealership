@@ -8,7 +8,16 @@ from mysite.config import SECRET_KEY
 from mysite.db.database import SessionLocal, engine
 from mysite.db.models import UserProfile, UserRole
 
-from .view import BrandView, CarModelView, CarView, PriceHistoryView, SalonSettingsView, UserProfileView
+from .view import (
+    BrandView,
+    CarModelView,
+    CarView,
+    LeadView,
+    PriceHistoryView,
+    SalonSettingsView,
+    TestDriveView,
+    UserProfileView,
+)
 
 
 class AdminAuth(AuthenticationBackend):
@@ -59,3 +68,5 @@ def setup_admin(app: FastAPI):
     admin.add_view(CarModelView)
     admin.add_view(CarView)
     admin.add_view(PriceHistoryView)
+    admin.add_view(LeadView)
+    admin.add_view(TestDriveView)

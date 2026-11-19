@@ -118,3 +118,31 @@ def test_admin_brand_delete_forbidden(client, admin_session_local, admin, brand)
 def test_admin_brand_list_without_login_redirects(client, admin_session_local, brand):
     response = client.get('/admin/brand/list', follow_redirects=False)
     assert response.status_code in (302, 303, 307)
+
+
+def test_admin_lead_list_ok(client, admin_session_local, admin, make_lead):
+    lead_db = make_lead(comment='admin-visible-comment')
+    admin_login(client, admin.username)
+    response = client.get('/admin/lead/list', follow_redirects=False)
+    assert response.status_code == 200
+    assert str(lead_db.id) in response.text
+
+
+def test_admin_test_drive_list_ok(client, admin_session_local, admin, make_car, make_test_drive):
+    make_test_drive(make_car())
+    admin_login(client, admin.username)
+    assert client.get('/admin/test-drive/list', follow_redirects=False).status_code == 200
+
+
+@pytest.mark.parametrize('path', ['lead', 'test-drive'])
+def test_admin_crm_views_readonly(client, admin_session_local, admin, make_car, make_lead, make_test_drive, path):
+    obj = make_lead() if path == 'lead' else make_test_drive(make_car())
+    admin_login(client, admin.username)
+    assert client.get(f'/admin/{path}/create', follow_redirects=False).status_code == 403
+    assert client.get(f'/admin/{path}/edit/{obj.id}', follow_redirects=False).status_code == 403
+    assert client.delete(f'/admin/{path}/delete?pks={obj.id}', follow_redirects=False).status_code == 403
+
+
+@pytest.mark.parametrize('path', ['lead', 'test-drive'])
+def test_admin_crm_list_without_login_redirects(client, admin_session_local, path):
+    assert client.get(f'/admin/{path}/list', follow_redirects=False).status_code in (302, 303, 307)
