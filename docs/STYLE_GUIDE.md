@@ -7,7 +7,7 @@
 Запрещено:
 - добавлять слои `services/`, `repositories/`, `crud/`, `core/`, `utils/` и т.п.;
 - разбивать `models.py` и `schema.py` на несколько файлов;
-- переходить на async SQLAlchemy (`AsyncSession`, `asyncpg`-движок);
+- переходить на async SQLAlchemy (`AsyncSession`, async-движки вроде `aiosqlite`);
 - менять имена, пути и структуру, описанные ниже.
 
 ---
@@ -22,7 +22,7 @@ Auto_salon/
 │   ├── env.py               # from mysite.db.models import *; target_metadata = Base.metadata
 │   └── versions/
 ├── Dockerfile
-├── docker-compose.yml       # сервисы: fast_web, fast_db (postgres:17 + healthcheck), nginx
+├── docker-compose.yml       # сервисы: fast_web (том с auto_salon.db), nginx
 ├── nginx/
 │   ├── Dockerfile
 │   └── nginx.conf
@@ -51,7 +51,7 @@ Auto_salon/
 ```
 
 Имена файлов роутеров — snake_case по сущности: `car.py`, `car_model.py`,
-`car_image.py`, `test_drive.py`, `trade_in.py`.
+`car_image.py`, `trade_in.py`.
 
 ---
 
@@ -66,7 +66,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv('DATABASE_URL')
+DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./auto_salon.db')
 
 SECRET_KEY = os.getenv('SECRET_KEY')
 ALGORITHM = os.getenv('ALGORITHM', 'HS256')
@@ -82,18 +82,26 @@ SALON_TIMEZONE = os.getenv('SALON_TIMEZONE', 'Asia/Bishkek')
 
 ## 3. db/database.py
 
-Синхронный SQLAlchemy 2.x (драйвер psycopg2: в SQLAlchemy 2.1 URL обязательно
-`postgresql+psycopg2://...`, голый `postgresql://` ищет psycopg 3). `get_db` объявлен **ОДИН раз здесь** и импортируется
+Синхронный SQLAlchemy 2.x, база SQLite (`sqlite:///./auto_salon.db`). Для SQLite обязательны
+`check_same_thread=False` и `PRAGMA foreign_keys=ON` (иначе FK не проверяются). `get_db` объявлен **ОДИН раз здесь** и импортируется
 во все роутеры (в старых проектах он копировался в каждый файл — так больше не делаем).
 
 ```python
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from mysite.config import DATABASE_URL
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, connect_args={'check_same_thread': False})
 SessionLocal = sessionmaker(bind=engine)
+
+
+@event.listens_for(engine, 'connect')
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute('PRAGMA foreign_keys=ON')
+    cursor.execute('PRAGMA busy_timeout=5000')
+    cursor.close()
 
 
 class Base(DeclarativeBase):
@@ -179,8 +187,13 @@ class UserProfile(Base):
 - Деньги — `Mapped[Decimal] = mapped_column(Numeric(14, 2))`. Никогда `Float` для денег.
 - Проценты — `Numeric(5, 2)`.
 - Enum-поле — `mapped_column(Enum(CarStatus), default=CarStatus.available)`.
-- Время — `DateTime(timezone=True)` (timestamptz, хранится в UTC). Создание — `server_default=func.now()`;
-  изменения — `onupdate=func.now()`.
+- Время — `DateTime(timezone=True)`, хранится в UTC. Создание — `server_default=func.now()`;
+  изменения — `onupdate=func.now()`. SQLite не хранит часовой пояс и возвращает naive datetime —
+  перед сравнением с `datetime.now(timezone.utc)` приводить: `value.replace(tzinfo=timezone.utc)`.
+  При записи SQLite отбрасывает tzinfo без перевода в UTC — входящие aware datetime приводить
+  `value.astimezone(timezone.utc)` до записи; naive от клиента — 422.
+- JSON-поля — `JSON` (не `JSONB`).
+- Деньги в коде — только `Decimal` (`Decimal('0.01')`, `quantize`), никаких `float`.
 - Python-код использует `datetime.now(timezone.utc)`, а не `utcnow()`.
 - Внешний ключ: `mapped_column(ForeignKey('car.id'))`; nullable — `Mapped[Optional[int]]`.
 - Мягкое удаление: `deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)`.
@@ -239,7 +252,7 @@ class RefreshToken(Base):
 
 Имена полей: `brand_name`, `model_name`, `car_image`, `stars`, `comment`,
 `profile_image`, `phone_number`. Имена таблиц — snake_case единственного числа
-(`user_profile`, `car_model`, `price_history`, `test_drive`).
+(`user_profile`, `car_model`, `price_history`, `trade_in`).
 
 ---
 
@@ -387,7 +400,7 @@ async def delete_brand(brand_id: int, db: Session = Depends(get_db)):
 ```
 
 Правила:
-- Имя роутера: `<entity>_router`; `prefix='/<entity>'` (kebab-case для составных: `/car-model`, `/test-drive`),
+- Имя роутера: `<entity>_router`; `prefix='/<entity>'` (kebab-case для составных: `/car-model`, `/lead-note`),
   `tags=['<Entity>']`.
 - Пути строго: `POST /create`, `GET /list`, `GET /detail?<entity>_id=`, `PUT /update/{id}`,
   `DELETE /delete/{id}`. Дополнительные действия — глаголом: `POST /deal/reserve/{deal_id}`,
@@ -539,9 +552,9 @@ def setup_admin(app: FastAPI):
 
 - `Dockerfile`: `FROM python:3.12`, `ENV PYTHONUNBUFFERED=1`, `WORKDIR /app`,
   `COPY requirements.txt`, `pip install -r requirements.txt`, `COPY . /app/`.
-- `docker-compose.yml`: `fast_web` (uvicorn main:auto_app, env_file .env, depends_on fast_db
-  `condition: service_healthy`), `fast_db` (`postgres:17`, healthcheck `pg_isready`), `nginx`
-  (build ./nginx, порт 80). Тома: `postgres_data`, `static_volume`, `media_volume`.
+- `docker-compose.yml`: `fast_web` (uvicorn main:auto_app, env_file .env,
+  `DATABASE_URL=sqlite:////app/data/auto_salon.db` в environment, bind-mount `./data:/app/data`),
+  `nginx` (build ./nginx, порт 80). Отдельного сервиса БД нет. uvicorn — без `--workers`.
 - `nginx/Dockerfile`: `FROM nginx:latest` + `COPY nginx.conf /etc/nginx/conf.d/default.conf`.
 - `nginx/nginx.conf`: `proxy_pass http://fast_web:8000`, `location /static/`, `location /media/`.
 

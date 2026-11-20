@@ -8,12 +8,12 @@
 - Валюта: `KGS` по умолчанию; у авто и сделки есть поле `currency` (`KGS` | `USD`).
 - Деньги — `Numeric(14, 2)`.
 - Телефон — формат `+996XXXXXXXXX`.
-- Время в БД — **UTC**. Часовой пояс салона — `Asia/Bishkek` (рабочие часы, тест-драйвы считаются в нём).
+- Время в БД — **UTC**. Часовой пояс салона — `Asia/Bishkek` (рабочие часы считаются в нём).
 - Ошибки для пользователя — **на русском**.
 
 ## 2. Стек
 
-FastAPI, синхронный SQLAlchemy 2.0, PostgreSQL 17, Alembic, Pydantic v2, passlib/bcrypt,
+FastAPI, синхронный SQLAlchemy 2.0, SQLite, Alembic, Pydantic v2, passlib/bcrypt,
 python-jose (JWT access + refresh), sqladmin, Docker + docker-compose + nginx, pytest.
 
 ## 3. Роли
@@ -32,7 +32,6 @@ python-jose (JWT access + refresh), sqladmin, Docker + docker-compose + nginx, p
 - Добавляет/редактирует авто и фото.
 - Меняет цену — изменение пишется в `PriceHistory`.
 - Берёт заявки в работу, пишет заметки по клиенту (`LeadNote`).
-- Тест-драйвы.
 - Создаёт сделки, бронирует, отмечает оплату и выдачу.
 - Скидка до своего `discount_limit`; выше — запрос админу (`DiscountRequest`).
 - Своя статистика.
@@ -44,7 +43,6 @@ python-jose (JWT access + refresh), sqladmin, Docker + docker-compose + nginx, p
 - Каталог (доступен и **без входа**).
 - Избранное.
 - Сравнение — до 4 авто.
-- Запись на тест-драйв.
 - Заявка на покупку.
 - Trade-in.
 - Кредитный калькулятор.
@@ -66,13 +64,12 @@ python-jose (JWT access + refresh), sqladmin, Docker + docker-compose + nginx, p
 | DriveType | front, rear, full |
 | Steering | left, right |
 | Currency | KGS, USD |
-| LeadType | purchase, test_drive, trade_in, question |
+| LeadType | purchase, trade_in, question |
 | LeadStatus | new, in_progress, closed, rejected |
-| TestDriveStatus | scheduled, confirmed, completed, cancelled |
 | DealStatus | new, in_progress, reserved, paid, delivered, cancelled |
 | DiscountStatus | pending, approved, rejected |
 | TradeInStatus | new, evaluating, offered, accepted, rejected |
-| NotificationType | lead, test_drive, deal, discount, reservation, system |
+| NotificationType | lead, deal, discount, reservation, system |
 
 ### 4.2 Таблицы
 
@@ -89,7 +86,9 @@ discount_limit (`Numeric(5,2)`, default 0 — для seller), created_at.
 **Car**: vin (unique, 17 символов), brand_id, car_model_id, year, body_type, color,
 engine_volume, fuel_type, transmission, drive_type, steering, condition, status,
 price, currency, description, mileage (default 0), owners_count, has_accidents,
-accident_notes, customs_cleared, registered_in_kr, created_by_id,
+accident_notes, customs_cleared, registered_in_kr,
+installment_available (default True), min_down_payment_percent, max_term_months, installment_rate_percent
+(условия рассрочки, nullable — null означает значение по умолчанию салона), created_by_id,
 created_at, updated_at, deleted_at.
 
 **CarImage**: car_id, car_image, is_main, position.
@@ -99,8 +98,6 @@ created_at, updated_at, deleted_at.
 **Lead**: client_id, car_id (nullable), lead_type, status, seller_id (nullable), comment, created_at.
 
 **LeadNote**: lead_id, seller_id, note, created_at.
-
-**TestDrive**: car_id, client_id, seller_id (nullable), start_time, end_time, status, created_at.
 
 **Deal**: car_id, client_id, seller_id, base_price, discount_percent, final_price, currency,
 status, reserved_until, paid_at, delivered_at, cancel_reason, created_at, deleted_at.
@@ -121,7 +118,9 @@ estimated_price, currency, status, seller_id (nullable), created_at.
 **AuditLog**: user_id, action, entity_name, entity_id, old_value (JSON), new_value (JSON), created_at.
 
 **SalonSettings** (одна запись): salon_name, address, phone_number, work_start, work_end,
-test_drive_minutes (60), reservation_hours (48), default_discount_limit (3).
+reservation_hours (48), default_discount_limit (3),
+default_min_down_payment_percent (30), default_max_term_months (36),
+default_installment_rate_percent (0), min_term_months (6).
 
 ## 5. Бизнес-правила
 
@@ -129,14 +128,13 @@ test_drive_minutes (60), reservation_hours (48), default_discount_limit (3).
    `new → in_progress → reserved → paid → delivered`;
    из любого статуса, кроме `delivered`, → `cancelled`.
    Недопустимый переход → **409**.
-2. **Двойная бронь невозможна** — блокировка строки авто (`SELECT ... FOR UPDATE`,
-   `with_for_update()`).
+2. **Двойная бронь невозможна** — в SQLite нет блокировки строк, поэтому смена статуса авто на
+   `reserved` — одним атомарным `UPDATE car SET status='reserved' WHERE id=:id AND status='available'`;
+   `rowcount == 0` → **409** «Авто уже забронировано».
 3. **Истечение брони:** через `reservation_hours` без оплаты → сделка `cancelled`,
    авто `available`, уведомления продавцу и клиенту. Реализация — фоновая задача
    (по образцу `game_scheduler` из mafia_app).
-4. **Тест-драйвы:** только в рабочие часы салона (`work_start`–`work_end`, Asia/Bishkek),
-   без пересечений по авто и по продавцу, не на `reserved`/`sold` авто, не в прошлое.
-   Длительность — `test_drive_minutes`.
+4. *(удалено: тест-драйвы убраны из проекта)*
 5. **Скидка:** `<= discount_limit` продавца — применяется сразу;
    больше — создаётся `DiscountRequest` админу (`pending`).
 6. **`final_price` считает сервер** (`base_price * (1 - discount_percent / 100)`), клиент его не передаёт.
@@ -145,6 +143,16 @@ test_drive_minutes (60), reservation_hours (48), default_discount_limit (3).
 9. Для `used` обязательны поля б/у (mileage, owners_count, has_accidents, ...);
    для `new` — `mileage = 0`.
 10. **Отзыв** — только после сделки в статусе `delivered`, один на сделку.
+11. **Рассрочка — условия у каждой машины свои:** `installment_available`, `min_down_payment_percent`,
+    `max_term_months`, `installment_rate_percent`; пустое поле → значение по умолчанию из `SalonSettings`.
+    Условия машины меняют seller и admin (`PUT /car/installment/{car_id}`), client — только просмотр (403);
+    значения по умолчанию — только admin (`PUT /credit/settings/update`). Каждое изменение → `AuditLog`.
+    Валидация: взнос 0–100%, срок от `min_term_months`, ставка >= 0.
+    Калькулятор (`POST /credit/calculate`) берёт цену и условия конкретной машины:
+    рассрочка выключена → **400** «Для этого авто рассрочка недоступна»; взнос ниже минимума → **422**
+    «Минимальный первый взнос для этого авто — N%»; срок вне диапазона → **422**.
+    Расчёт — только `Decimal`, переплата не может быть отрицательной. Любая новая функция, связанная
+    с ценой, сделками или оплатой, учитывает эти условия.
 
 ## 6. Нефункциональные требования
 
@@ -153,3 +161,20 @@ test_drive_minutes (60), reservation_hours (48), default_discount_limit (3).
 - Пароли — bcrypt-хеш; в ответах API пароль и токены из БД не возвращаются.
 - Все списки с пагинацией (`skip`/`limit`) там, где данных может быть много (каталог, заявки, сделки).
 - Каталог: фильтры по марке, модели, году, цене, состоянию, кузову, топливу, КПП, приводу, статусу.
+  Поиск без учёта регистра по кириллице в SQLite (`ilike`, `lower()`) работает только для латиницы —
+  для текстовых фильтров нормализовать регистр в Python или хранить отдельное поле в нижнем регистре.
+
+## 7. База данных — SQLite
+
+- Файл `auto_salon.db` (в Docker — `./data/auto_salon.db`). Отдельного сервера БД нет.
+- Внешние ключи включаются `PRAGMA foreign_keys=ON` при каждом подключении.
+- **Деньги:** `Numeric(14, 2)`, проценты `Numeric(5, 2)`; все расчёты (скидки, `final_price`,
+  кредитный калькулятор) — только через `Decimal`, без `float`.
+- **Время:** хранится в UTC; текущее время — `datetime.now(timezone.utc)` в Python. SQLite возвращает
+  naive datetime — перед сравнением приводить к UTC. На часовые пояса БД не полагаться.
+  При записи tzinfo отбрасывается без перевода — входящие datetime (бронь) сначала
+  переводить в UTC (`astimezone(timezone.utc)`); naive datetime от клиента → 422.
+- **Enum:** в SQLite хранится как строка (VARCHAR); допустимые значения проверяют Pydantic-схемы
+  (CHECK в БД нет).
+- **JSON** вместо `JSONB` (поля `old_value` / `new_value` в `AuditLog`).
+- Запись — по одной транзакции за раз: uvicorn без `--workers`.

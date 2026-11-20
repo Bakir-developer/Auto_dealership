@@ -18,8 +18,8 @@ description: Применяй при любом изменении mysite/db/mod
   target_metadata = Base.metadata
   ```
 - В `alembic.ini` `sqlalchemy.url` не хардкодить (оставить пустым — URL берётся из `.env`).
-- Локально (вне docker) `DATABASE_URL` должен указывать на `localhost:5432`,
-  в docker — на `fast_db:5432`. Порт БД пробрасывается в `docker-compose.yml` (`5432:5432`).
+- Локально `DATABASE_URL=sqlite:///./auto_salon.db`,
+  в docker — `sqlite:////app/data/auto_salon.db` (bind-mount `./data:/app/data`, файл `./data/auto_salon.db` на хосте).
 
 ## Создание
 ```bash
@@ -29,8 +29,8 @@ alembic revision --autogenerate -m "create car and deal tables"
 
 ## Проверка сгенерированного файла (ОБЯЗАТЕЛЬНО прочитать)
 - Все новые таблицы/колонки/FK/UniqueConstraint/индексы на месте.
-- Enum: PostgreSQL создаёт тип; в `downgrade()` после `drop_table` удали тип, если autogenerate этого не сделал:
-  `sa.Enum(name='carstatus').drop(op.get_bind(), checkfirst=True)`.
+- SQLite не умеет большинство `ALTER TABLE`: в `env.py` включён `render_as_batch=True`, изменения столбцов
+  идут через `with op.batch_alter_table(...)`. Enum в SQLite — VARCHAR без CHECK (`create_constraint=False` по умолчанию), значения проверяет Pydantic.
 - Новый NOT NULL столбец в таблице с данными → нужен `server_default` или двухшаговая миграция.
 - Переименование autogenerate видит как drop+add — исправь вручную на `op.alter_column(..., new_column_name=...)`
   (данные иначе пропадут).

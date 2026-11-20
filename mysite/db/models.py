@@ -4,6 +4,7 @@ from enum import Enum as PyEnum
 from typing import List, Optional
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -17,8 +18,8 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     func,
+    true,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -88,7 +89,6 @@ class Currency(str, PyEnum):
 
 class LeadType(str, PyEnum):
     purchase = 'purchase'
-    test_drive = 'test_drive'
     trade_in = 'trade_in'
     question = 'question'
 
@@ -98,13 +98,6 @@ class LeadStatus(str, PyEnum):
     in_progress = 'in_progress'
     closed = 'closed'
     rejected = 'rejected'
-
-
-class TestDriveStatus(str, PyEnum):
-    scheduled = 'scheduled'
-    confirmed = 'confirmed'
-    completed = 'completed'
-    cancelled = 'cancelled'
 
 
 class DealStatus(str, PyEnum):
@@ -132,7 +125,6 @@ class TradeInStatus(str, PyEnum):
 
 class NotificationType(str, PyEnum):
     lead = 'lead'
-    test_drive = 'test_drive'
     deal = 'deal'
     discount = 'discount'
     reservation = 'reservation'
@@ -163,12 +155,6 @@ class UserProfile(Base):
     client_leads: Mapped[List['Lead']] = relationship('Lead', back_populates='client', foreign_keys='Lead.client_id')
     seller_leads: Mapped[List['Lead']] = relationship('Lead', back_populates='seller', foreign_keys='Lead.seller_id')
     lead_notes: Mapped[List['LeadNote']] = relationship('LeadNote', back_populates='seller')
-    client_test_drives: Mapped[List['TestDrive']] = relationship(
-        'TestDrive', back_populates='client', foreign_keys='TestDrive.client_id'
-    )
-    seller_test_drives: Mapped[List['TestDrive']] = relationship(
-        'TestDrive', back_populates='seller', foreign_keys='TestDrive.seller_id'
-    )
     client_deals: Mapped[List['Deal']] = relationship('Deal', back_populates='client', foreign_keys='Deal.client_id')
     seller_deals: Mapped[List['Deal']] = relationship('Deal', back_populates='seller', foreign_keys='Deal.seller_id')
     discount_requests: Mapped[List['DiscountRequest']] = relationship(
@@ -260,6 +246,11 @@ class Car(Base):
     accident_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     customs_cleared: Mapped[bool] = mapped_column(Boolean, default=False)
     registered_in_kr: Mapped[bool] = mapped_column(Boolean, default=False)
+    # условия рассрочки; NULL — берётся значение по умолчанию из SalonSettings
+    installment_available: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    min_down_payment_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    max_term_months: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
+    installment_rate_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
     created_by_id: Mapped[int] = mapped_column(ForeignKey('user_profile.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -273,16 +264,24 @@ class Car(Base):
     images: Mapped[List['CarImage']] = relationship('CarImage', back_populates='car', cascade='all, delete-orphan')
     price_history: Mapped[List['PriceHistory']] = relationship('PriceHistory', back_populates='car')
     leads: Mapped[List['Lead']] = relationship('Lead', back_populates='car')
-    test_drives: Mapped[List['TestDrive']] = relationship('TestDrive', back_populates='car')
     deals: Mapped[List['Deal']] = relationship('Deal', back_populates='car')
     favorites: Mapped[List['Favorite']] = relationship('Favorite', back_populates='car', cascade='all, delete-orphan')
 
     __table_args__ = (
         CheckConstraint('price > 0', name='ck_car_price_positive'),
-        CheckConstraint('char_length(vin) = 17', name='ck_car_vin_length'),
+        CheckConstraint('length(vin) = 17', name='ck_car_vin_length'),
         CheckConstraint('mileage >= 0', name='ck_car_mileage_not_negative'),
         CheckConstraint('owners_count IS NULL OR owners_count >= 0', name='ck_car_owners_not_negative'),
         CheckConstraint('engine_volume IS NULL OR engine_volume > 0', name='ck_car_engine_volume_positive'),
+        CheckConstraint(
+            'min_down_payment_percent IS NULL OR (min_down_payment_percent >= 0 AND min_down_payment_percent <= 100)',
+            name='ck_car_min_down_payment_range',
+        ),
+        CheckConstraint('max_term_months IS NULL OR max_term_months >= 1', name='ck_car_max_term_positive'),
+        CheckConstraint(
+            'installment_rate_percent IS NULL OR installment_rate_percent >= 0',
+            name='ck_car_installment_rate_not_negative',
+        ),
     )
 
 
@@ -345,29 +344,6 @@ class LeadNote(Base):
 
     lead: Mapped['Lead'] = relationship('Lead', back_populates='notes')
     seller: Mapped['UserProfile'] = relationship('UserProfile', back_populates='lead_notes')
-
-
-class TestDrive(Base):
-    __tablename__ = 'test_drive'
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    car_id: Mapped[int] = mapped_column(ForeignKey('car.id'), index=True)
-    client_id: Mapped[int] = mapped_column(ForeignKey('user_profile.id'), index=True)
-    seller_id: Mapped[Optional[int]] = mapped_column(ForeignKey('user_profile.id'), nullable=True, index=True)
-    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    status: Mapped[TestDriveStatus] = mapped_column(Enum(TestDriveStatus), default=TestDriveStatus.scheduled)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    car: Mapped['Car'] = relationship('Car', back_populates='test_drives')
-    client: Mapped['UserProfile'] = relationship(
-        'UserProfile', back_populates='client_test_drives', foreign_keys=[client_id]
-    )
-    seller: Mapped[Optional['UserProfile']] = relationship(
-        'UserProfile', back_populates='seller_test_drives', foreign_keys=[seller_id]
-    )
-
-    __table_args__ = (CheckConstraint('end_time > start_time', name='ck_test_drive_time_order'),)
 
 
 class Deal(Base):
@@ -526,8 +502,8 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(50))
     entity_name: Mapped[str] = mapped_column(String(50))
     entity_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    old_value: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    new_value: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    old_value: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    new_value: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[Optional['UserProfile']] = relationship('UserProfile', back_populates='audit_logs')
@@ -542,9 +518,13 @@ class SalonSettings(Base):
     phone_number: Mapped[str] = mapped_column(String(13))
     work_start: Mapped[time] = mapped_column(Time)
     work_end: Mapped[time] = mapped_column(Time)
-    test_drive_minutes: Mapped[int] = mapped_column(SmallInteger, default=60)
     reservation_hours: Mapped[int] = mapped_column(SmallInteger, default=48)
     default_discount_limit: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=3)
+    # условия рассрочки по умолчанию — для авто, у которых своё значение не задано
+    default_min_down_payment_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=30, server_default='30')
+    default_max_term_months: Mapped[int] = mapped_column(SmallInteger, default=36, server_default='36')
+    default_installment_rate_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, server_default='0')
+    min_term_months: Mapped[int] = mapped_column(SmallInteger, default=6, server_default='6')
 
     __table_args__ = (
         CheckConstraint('id = 1', name='ck_salon_settings_single_row'),
@@ -552,4 +532,11 @@ class SalonSettings(Base):
         CheckConstraint(
             'default_discount_limit >= 0 AND default_discount_limit <= 100', name='ck_salon_discount_limit_range'
         ),
+        CheckConstraint(
+            'default_min_down_payment_percent >= 0 AND default_min_down_payment_percent <= 100',
+            name='ck_salon_min_down_payment_range',
+        ),
+        CheckConstraint('min_term_months >= 1', name='ck_salon_min_term_positive'),
+        CheckConstraint('default_max_term_months >= min_term_months', name='ck_salon_max_term_not_less_min'),
+        CheckConstraint('default_installment_rate_percent >= 0', name='ck_salon_installment_rate_not_negative'),
     )

@@ -12,7 +12,7 @@ model: opus
 2. **Не открывай `.env`** — проверяй только факт: есть ли `.env` в `.gitignore`, есть ли `.env.example`.
 
 ## Чек-лист
-1. **Секреты в коде:** Grep по `SECRET_KEY\s*=\s*['"]`, `password\s*=\s*['"]`, `postgresql://.*:.*@`,
+1. **Секреты в коде:** Grep по `SECRET_KEY\s*=\s*['"]`, `password\s*=\s*['"]`, `://[^/\s]+:[^@\s]+@` (пароль в URL),
    токены/ключи в `mysite/`, `main.py`, `alembic.ini`, `docker-compose.yml`, `tests/`.
    Секреты только через `os.getenv` в `mysite/config.py`. `SECRET_KEY` без дефолта в коде.
 2. **.env:** `.env` в `.gitignore`; `.env.example` без реальных значений.
@@ -23,7 +23,7 @@ model: opus
    публичен только каталог (list/detail авто, марки, модели), register, login, кредитный калькулятор.
    Register создаёт только `client` (роль из запроса игнорируется). Продавцов создаёт только admin.
    Заблокированный (`is_active=False`) не проходит auth.
-6. **IDOR:** client получает только свои Lead/TestDrive/Deal/TradeIn/Favorite/Review/Notification
+6. **IDOR:** client получает только свои Lead/Deal/TradeIn/Favorite/Review/Notification
    (фильтр по `client_id == current_user.id`, чужой → 404). Seller — только свои заявки/сделки.
    Проверь detail/update/delete по id.
 7. **Утечки в схемах ответа:** нет `password`, `token`, внутренних полей в `*DetailSchema`/`*ListSchema`;

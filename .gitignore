@@ -10,3 +10,9 @@ media/
 .pytest_cache/
 .claude/settings.local.json
 .claude/state/
+*.db
+*.db-journal
+*.sqlite3
+data/
+*.db-wal
+*.db-shm

@@ -23,7 +23,7 @@ model: opus
 - **Модели:** `back_populates` с ДВУХ сторон и имена совпадают; `foreign_keys` при нескольких FK;
   Numeric для денег; nullable соответствует ТЗ; UniqueConstraint/CheckConstraint по ТЗ; cascade уместен.
 - **Типы:** `Mapped[Optional[...]]` vs nullable; схемы соответствуют моделям; Decimal для денег.
-- **Корректность:** бизнес-правила ТЗ (машина состояний, 409, FOR UPDATE, final_price на сервере,
+- **Корректность:** бизнес-правила ТЗ (машина состояний, 409, атомарная бронь `UPDATE ... WHERE status=available`, final_price на сервере,
   мягкое удаление фильтруется везде, PriceHistory/AuditLog), транзакции (commit/rollback), timezone UTC.
 - **N+1:** списки с relationship — `joinedload/selectinload`; пагинация в больших списках.
 - **Ошибки:** 404 при отсутствии; 404 для чужого объекта client; 403 для роли; 409 конфликт.
