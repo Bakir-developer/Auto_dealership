@@ -17,7 +17,9 @@ from .view import (
     DiscountRequestView,
     LeadView,
     PriceHistoryView,
+    ReviewView,
     SalonSettingsView,
+    TradeInView,
     UserProfileView,
 )
 
@@ -73,4 +75,6 @@ def setup_admin(app: FastAPI):
     admin.add_view(LeadView)
     admin.add_view(DealView)
     admin.add_view(DiscountRequestView)
+    admin.add_view(TradeInView)
+    admin.add_view(ReviewView)
     admin.add_view(AuditLogView)

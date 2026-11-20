@@ -50,6 +50,11 @@ def create_salon_settings(db: Session) -> SalonSettings:
         work_end=time(18, 0),
         reservation_hours=48,
         default_discount_limit=Decimal('3'),
+        # условия рассрочки по умолчанию (у авто могут быть свои)
+        default_min_down_payment_percent=Decimal('30'),
+        default_max_term_months=36,
+        default_installment_rate_percent=Decimal('0'),
+        min_term_months=6,
     )
     db.add(settings_db)
     db.flush()

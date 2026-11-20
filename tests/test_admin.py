@@ -197,3 +197,20 @@ def test_admin_sales_views_readonly(client, admin_session_local, admin, make_dea
 @pytest.mark.parametrize('path', ['deal', 'discount-request', 'audit-log'])
 def test_admin_sales_views_without_login_redirect(client, admin_session_local, path):
     assert client.get(f'/admin/{path}/list', follow_redirects=False).status_code in (302, 303, 307)
+
+
+@pytest.mark.parametrize('path', ['trade-in', 'review'])
+def test_admin_trade_in_review_views_readonly(client, admin_session_local, admin, make_trade_in, make_review, path):
+    obj = make_trade_in() if path == 'trade-in' else make_review()
+    admin_login(client, admin.username)
+    response = client.get(f'/admin/{path}/list', follow_redirects=False)
+    assert response.status_code == 200
+    assert str(obj.id) in response.text
+    assert client.get(f'/admin/{path}/create', follow_redirects=False).status_code == 403
+    assert client.get(f'/admin/{path}/edit/{obj.id}', follow_redirects=False).status_code == 403
+    assert client.delete(f'/admin/{path}/delete?pks={obj.id}', follow_redirects=False).status_code == 403
+
+
+@pytest.mark.parametrize('path', ['trade-in', 'review'])
+def test_admin_trade_in_review_views_without_login_redirect(client, admin_session_local, path):
+    assert client.get(f'/admin/{path}/list', follow_redirects=False).status_code in (302, 303, 307)

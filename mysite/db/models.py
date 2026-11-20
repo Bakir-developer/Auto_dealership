@@ -18,6 +18,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     func,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -245,6 +246,11 @@ class Car(Base):
     accident_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     customs_cleared: Mapped[bool] = mapped_column(Boolean, default=False)
     registered_in_kr: Mapped[bool] = mapped_column(Boolean, default=False)
+    # условия рассрочки; NULL — берётся значение по умолчанию из SalonSettings
+    installment_available: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    min_down_payment_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    max_term_months: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
+    installment_rate_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
     created_by_id: Mapped[int] = mapped_column(ForeignKey('user_profile.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -267,6 +273,15 @@ class Car(Base):
         CheckConstraint('mileage >= 0', name='ck_car_mileage_not_negative'),
         CheckConstraint('owners_count IS NULL OR owners_count >= 0', name='ck_car_owners_not_negative'),
         CheckConstraint('engine_volume IS NULL OR engine_volume > 0', name='ck_car_engine_volume_positive'),
+        CheckConstraint(
+            'min_down_payment_percent IS NULL OR (min_down_payment_percent >= 0 AND min_down_payment_percent <= 100)',
+            name='ck_car_min_down_payment_range',
+        ),
+        CheckConstraint('max_term_months IS NULL OR max_term_months >= 1', name='ck_car_max_term_positive'),
+        CheckConstraint(
+            'installment_rate_percent IS NULL OR installment_rate_percent >= 0',
+            name='ck_car_installment_rate_not_negative',
+        ),
     )
 
 
@@ -505,6 +520,11 @@ class SalonSettings(Base):
     work_end: Mapped[time] = mapped_column(Time)
     reservation_hours: Mapped[int] = mapped_column(SmallInteger, default=48)
     default_discount_limit: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=3)
+    # условия рассрочки по умолчанию — для авто, у которых своё значение не задано
+    default_min_down_payment_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=30, server_default='30')
+    default_max_term_months: Mapped[int] = mapped_column(SmallInteger, default=36, server_default='36')
+    default_installment_rate_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, server_default='0')
+    min_term_months: Mapped[int] = mapped_column(SmallInteger, default=6, server_default='6')
 
     __table_args__ = (
         CheckConstraint('id = 1', name='ck_salon_settings_single_row'),
@@ -512,4 +532,11 @@ class SalonSettings(Base):
         CheckConstraint(
             'default_discount_limit >= 0 AND default_discount_limit <= 100', name='ck_salon_discount_limit_range'
         ),
+        CheckConstraint(
+            'default_min_down_payment_percent >= 0 AND default_min_down_payment_percent <= 100',
+            name='ck_salon_min_down_payment_range',
+        ),
+        CheckConstraint('min_term_months >= 1', name='ck_salon_min_term_positive'),
+        CheckConstraint('default_max_term_months >= min_term_months', name='ck_salon_max_term_not_less_min'),
+        CheckConstraint('default_installment_rate_percent >= 0', name='ck_salon_installment_rate_not_negative'),
     )

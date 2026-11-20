@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 from typing import Annotated, List
 
@@ -66,6 +66,9 @@ ManualCarStatus = Annotated[CarStatus, AfterValidator(validate_manual_car_status
 Vin = Annotated[str, AfterValidator(validate_vin)]
 Money = Annotated[Decimal, Field(gt=0, max_digits=14, decimal_places=2)]
 Percent = Annotated[Decimal, Field(ge=0, le=100, max_digits=5, decimal_places=2)]
+DownPayment = Annotated[Decimal, Field(ge=0, max_digits=14, decimal_places=2)]
+CreditTerm = Annotated[int, Field(ge=1, le=120)]
+TermMonths = Annotated[int, Field(ge=1, le=120)]
 DiscountPercent = Annotated[Decimal, Field(gt=0, lt=100, max_digits=5, decimal_places=2)]
 Stars = Annotated[int, Field(ge=1, le=5)]
 Year = Annotated[int, Field(ge=1900, le=2100)]
@@ -298,6 +301,14 @@ class CarListSchema(BaseModel):
     mileage: int
 
 
+class InstallmentTermsSchema(BaseModel):
+    installment_available: bool
+    min_down_payment_percent: Decimal
+    min_term_months: int
+    max_term_months: int
+    installment_rate_percent: Decimal
+
+
 class CarDetailSchema(BaseModel):
     id: int
     vin: str
@@ -322,9 +333,41 @@ class CarDetailSchema(BaseModel):
     accident_notes: str | None
     customs_cleared: bool
     registered_in_kr: bool
+    # собственные условия рассрочки авто (null — значение по умолчанию салона)
+    installment_available: bool
+    min_down_payment_percent: Decimal | None
+    max_term_months: int | None
+    installment_rate_percent: Decimal | None
+    # итоговые условия с учётом значений по умолчанию — заполняет сервер
+    installment: InstallmentTermsSchema | None = None
     created_at: datetime
     updated_at: datetime
     images: List[CarImageListSchema] = []
+
+
+# ---------- Рассрочка (условия задаются для каждого авто) ----------
+
+
+class CarInstallmentUpdateSchema(BaseModel):
+    # null в поле условия — сбросить к значению по умолчанию салона
+    installment_available: bool | None = None
+    min_down_payment_percent: Percent | None = None
+    max_term_months: TermMonths | None = None
+    installment_rate_percent: Percent | None = None
+
+
+class InstallmentSettingsUpdateSchema(BaseModel):
+    default_min_down_payment_percent: Percent | None = None
+    default_max_term_months: TermMonths | None = None
+    default_installment_rate_percent: Percent | None = None
+    min_term_months: TermMonths | None = None
+
+
+class InstallmentSettingsDetailSchema(BaseModel):
+    default_min_down_payment_percent: Decimal
+    default_max_term_months: int
+    default_installment_rate_percent: Decimal
+    min_term_months: int
 
 
 # ---------- PriceHistory (создаётся сервером при изменении цены) ----------
@@ -487,23 +530,43 @@ class DiscountRequestDetailSchema(BaseModel):
     comment: str | None
 
 
-# ---------- TradeIn ----------
+# ---------- TradeIn (client_id, seller_id, status, estimated_price — сервер) ----------
 
 
 class TradeInCreateSchema(BaseModel):
-    brand_name: str = Field(max_length=50)
-    model_name: str = Field(max_length=50)
+    brand_name: Name50
+    model_name: Name50
     year: Year
     mileage: Mileage
-    description: str | None = None
-    currency: Currency = Currency.KGS
+    description: Text5000 | None = None
 
 
 class TradeInUpdateSchema(BaseModel):
-    estimated_price: Money | None = None
-    currency: Currency | None = None
-    status: TradeInStatus | None = None
-    description: str | None = None
+    brand_name: Name50 | None = None
+    model_name: Name50 | None = None
+    year: Year | None = None
+    mileage: Mileage | None = None
+    description: Text5000 | None = None
+
+
+class TradeInOfferSchema(BaseModel):
+    estimated_price: Money
+    currency: Currency = Currency.KGS
+
+
+class TradeInAssignSchema(BaseModel):
+    seller_id: int
+
+
+class TradeInImageListSchema(BaseModel):
+    id: int
+    trade_in_image: str
+
+
+class TradeInImageDetailSchema(BaseModel):
+    id: int
+    trade_in_id: int
+    trade_in_image: str
 
 
 class TradeInListSchema(BaseModel):
@@ -512,8 +575,11 @@ class TradeInListSchema(BaseModel):
     brand_name: str
     model_name: str
     year: int
+    estimated_price: Decimal | None
+    currency: Currency
     status: TradeInStatus
-    created_at: datetime
+    seller_id: int | None
+    created_at: UtcDatetimeOut
 
 
 class TradeInDetailSchema(BaseModel):
@@ -528,33 +594,11 @@ class TradeInDetailSchema(BaseModel):
     currency: Currency
     status: TradeInStatus
     seller_id: int | None
-    created_at: datetime
+    created_at: UtcDatetimeOut
+    images: List[TradeInImageListSchema] = []
 
 
-# ---------- TradeInImage ----------
-
-
-class TradeInImageCreateSchema(BaseModel):
-    trade_in_id: int
-    trade_in_image: str
-
-
-class TradeInImageUpdateSchema(BaseModel):
-    trade_in_image: str | None = None
-
-
-class TradeInImageListSchema(BaseModel):
-    id: int
-    trade_in_image: str
-
-
-class TradeInImageDetailSchema(BaseModel):
-    id: int
-    trade_in_id: int
-    trade_in_image: str
-
-
-# ---------- Favorite ----------
+# ---------- Favorite (user_id — сервер) ----------
 
 
 class FavoriteCreateSchema(BaseModel):
@@ -564,12 +608,14 @@ class FavoriteCreateSchema(BaseModel):
 class FavoriteListSchema(BaseModel):
     id: int
     car_id: int
+    car: CarListSchema
 
 
 class FavoriteDetailSchema(BaseModel):
     id: int
     user_id: int
     car_id: int
+    car: CarListSchema
 
 
 # ---------- Review (client_id, seller_id — сервер) ----------
@@ -578,21 +624,22 @@ class FavoriteDetailSchema(BaseModel):
 class ReviewCreateSchema(BaseModel):
     deal_id: int
     stars: Stars
-    comment: str | None = None
+    comment: Text2000 | None = None
 
 
 class ReviewUpdateSchema(BaseModel):
     stars: Stars | None = None
-    comment: str | None = None
+    comment: Text2000 | None = None
 
 
 class ReviewListSchema(BaseModel):
     id: int
     client_id: int
+    deal_id: int
     seller_id: int
     stars: int
     comment: str | None
-    created_at: datetime
+    created_at: UtcDatetimeOut
 
 
 class ReviewDetailSchema(BaseModel):
@@ -602,7 +649,91 @@ class ReviewDetailSchema(BaseModel):
     seller_id: int
     stars: int
     comment: str | None
-    created_at: datetime
+    created_at: UtcDatetimeOut
+
+
+# ---------- Credit (все результаты считает сервер) ----------
+
+
+class CreditCalculateSchema(BaseModel):
+    car_id: int
+    # первый взнос — суммой или в процентах (не оба); не указан — минимальный для авто
+    down_payment: DownPayment | None = None
+    down_payment_percent: Percent | None = None
+    term_months: CreditTerm
+
+
+class CreditResultSchema(BaseModel):
+    car_id: int
+    price: Decimal
+    currency: Currency
+    down_payment: Decimal
+    down_payment_percent: Decimal
+    loan_amount: Decimal
+    annual_rate: Decimal
+    term_months: int
+    monthly_payment: Decimal
+    total_payment: Decimal
+    overpayment: Decimal
+    terms: InstallmentTermsSchema
+
+
+class CreditCompareSchema(BaseModel):
+    car_ids: List[int] = Field(min_length=2, max_length=4)
+    # срок указан — для каждого авто считается рассрочка по его условиям
+    term_months: CreditTerm | None = None
+    down_payment_percent: Percent | None = None
+
+
+class CreditCompareItemSchema(BaseModel):
+    car: CarDetailSchema
+    credit: CreditResultSchema | None
+    credit_error: str | None = None
+
+
+# ---------- Statistic (только чтение) ----------
+
+
+class StatisticSellerRowSchema(BaseModel):
+    seller_id: int
+    username: str
+    is_active: bool
+    deals_count: int
+    delivered_count: int
+    revenue: dict[Currency, Decimal]
+    avg_stars: Decimal | None
+
+
+class StatisticSellerSchema(BaseModel):
+    seller_id: int
+    username: str
+    leads_by_status: dict[LeadStatus, int]
+    deals_by_status: dict[DealStatus, int]
+    discounts_by_status: dict[DiscountStatus, int]
+    trade_ins_by_status: dict[TradeInStatus, int]
+    revenue: dict[Currency, Decimal]
+    delivered_count: int
+    reviews_count: int
+    avg_stars: Decimal | None
+    date_from: date | None
+    date_to: date | None
+
+
+class StatisticGeneralSchema(BaseModel):
+    cars_by_status: dict[CarStatus, int]
+    leads_by_status: dict[LeadStatus, int]
+    deals_by_status: dict[DealStatus, int]
+    trade_ins_by_status: dict[TradeInStatus, int]
+    discounts_pending: int
+    revenue: dict[Currency, Decimal]
+    delivered_count: int
+    avg_discount_percent: Decimal | None
+    clients_count: int
+    reviews_count: int
+    avg_stars: Decimal | None
+    sellers: List[StatisticSellerRowSchema]
+    date_from: date | None
+    date_to: date | None
 
 
 # ---------- Notification (создаётся сервером) ----------

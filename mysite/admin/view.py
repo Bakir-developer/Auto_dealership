@@ -9,7 +9,9 @@ from mysite.db.models import (
     DiscountRequest,
     Lead,
     PriceHistory,
+    Review,
     SalonSettings,
+    TradeIn,
     UserProfile,
 )
 
@@ -167,6 +169,39 @@ class AuditLogView(ModelView, model=AuditLog):
         AuditLog.created_at,
     ]
     column_default_sort = (AuditLog.id, True)
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+
+class TradeInView(ModelView, model=TradeIn):
+    column_list = [
+        TradeIn.id,
+        TradeIn.client_id,
+        TradeIn.brand_name,
+        TradeIn.model_name,
+        TradeIn.year,
+        TradeIn.estimated_price,
+        TradeIn.currency,
+        TradeIn.status,
+        TradeIn.seller_id,
+        TradeIn.created_at,
+    ]
+    # только чтение: правка в панели обошла бы машину состояний trade-in
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+
+class ReviewView(ModelView, model=Review):
+    column_list = [
+        Review.id,
+        Review.client_id,
+        Review.deal_id,
+        Review.seller_id,
+        Review.stars,
+        Review.created_at,
+    ]
     can_create = False
     can_edit = False
     can_delete = False

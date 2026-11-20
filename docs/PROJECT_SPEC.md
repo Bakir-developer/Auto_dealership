@@ -86,7 +86,9 @@ discount_limit (`Numeric(5,2)`, default 0 — для seller), created_at.
 **Car**: vin (unique, 17 символов), brand_id, car_model_id, year, body_type, color,
 engine_volume, fuel_type, transmission, drive_type, steering, condition, status,
 price, currency, description, mileage (default 0), owners_count, has_accidents,
-accident_notes, customs_cleared, registered_in_kr, created_by_id,
+accident_notes, customs_cleared, registered_in_kr,
+installment_available (default True), min_down_payment_percent, max_term_months, installment_rate_percent
+(условия рассрочки, nullable — null означает значение по умолчанию салона), created_by_id,
 created_at, updated_at, deleted_at.
 
 **CarImage**: car_id, car_image, is_main, position.
@@ -116,7 +118,9 @@ estimated_price, currency, status, seller_id (nullable), created_at.
 **AuditLog**: user_id, action, entity_name, entity_id, old_value (JSON), new_value (JSON), created_at.
 
 **SalonSettings** (одна запись): salon_name, address, phone_number, work_start, work_end,
-reservation_hours (48), default_discount_limit (3).
+reservation_hours (48), default_discount_limit (3),
+default_min_down_payment_percent (30), default_max_term_months (36),
+default_installment_rate_percent (0), min_term_months (6).
 
 ## 5. Бизнес-правила
 
@@ -139,6 +143,16 @@ reservation_hours (48), default_discount_limit (3).
 9. Для `used` обязательны поля б/у (mileage, owners_count, has_accidents, ...);
    для `new` — `mileage = 0`.
 10. **Отзыв** — только после сделки в статусе `delivered`, один на сделку.
+11. **Рассрочка — условия у каждой машины свои:** `installment_available`, `min_down_payment_percent`,
+    `max_term_months`, `installment_rate_percent`; пустое поле → значение по умолчанию из `SalonSettings`.
+    Условия машины меняют seller и admin (`PUT /car/installment/{car_id}`), client — только просмотр (403);
+    значения по умолчанию — только admin (`PUT /credit/settings/update`). Каждое изменение → `AuditLog`.
+    Валидация: взнос 0–100%, срок от `min_term_months`, ставка >= 0.
+    Калькулятор (`POST /credit/calculate`) берёт цену и условия конкретной машины:
+    рассрочка выключена → **400** «Для этого авто рассрочка недоступна»; взнос ниже минимума → **422**
+    «Минимальный первый взнос для этого авто — N%»; срок вне диапазона → **422**.
+    Расчёт — только `Decimal`, переплата не может быть отрицательной. Любая новая функция, связанная
+    с ценой, сделками или оплатой, учитывает эти условия.
 
 ## 6. Нефункциональные требования
 

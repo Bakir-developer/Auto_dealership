@@ -24,7 +24,9 @@ from mysite.admin.view import (  # noqa: E402
     DiscountRequestView,
     LeadView,
     PriceHistoryView,
+    ReviewView,
     SalonSettingsView,
+    TradeInView,
     UserProfileView,
 )
 from mysite.api.auth import create_access_token, get_password_hash  # noqa: E402
@@ -40,13 +42,18 @@ from mysite.db.models import (  # noqa: E402
     DiscountRequest,
     DiscountStatus,
     DriveType,
+    Favorite,
     FuelType,
     Lead,
     LeadStatus,
     LeadType,
     Notification,
     NotificationType,
+    Review,
     SalonSettings,
+    TradeIn,
+    TradeInImage,
+    TradeInStatus,
     Transmission,
     UserProfile,
     UserRole,
@@ -190,6 +197,8 @@ def admin_session_local(monkeypatch, db):
         DealView,
         DiscountRequestView,
         AuditLogView,
+        TradeInView,
+        ReviewView,
     ):
         monkeypatch.setattr(view, 'session_maker', staticmethod(lambda **kwargs: SessionProxy(db)))
     return db
@@ -252,7 +261,9 @@ def make_car(db, brand, car_model, seller):
 @pytest.fixture
 def media_dir(tmp_path, monkeypatch):
     monkeypatch.setattr('mysite.api.car_image.MEDIA_DIR', str(tmp_path))
+    monkeypatch.setattr('mysite.api.trade_in.MEDIA_DIR', str(tmp_path))
     (tmp_path / 'car_images').mkdir()
+    (tmp_path / 'trade_in_images').mkdir()
     return tmp_path
 
 
@@ -347,3 +358,64 @@ def make_discount_request(db, make_deal, seller):
         return discount_db
 
     return _make_discount_request
+
+
+@pytest.fixture
+def make_trade_in(db, client_user):
+    def _make_trade_in(**overrides):
+        data = dict(
+            client_id=client_user.id,
+            brand_name='Toyota',
+            model_name='Corolla',
+            year=2015,
+            mileage=120000,
+            status=TradeInStatus.new,
+        )
+        data.update(overrides)
+        trade_in_db = TradeIn(**data)
+        db.add(trade_in_db)
+        db.commit()
+        db.refresh(trade_in_db)
+        return trade_in_db
+
+    return _make_trade_in
+
+
+@pytest.fixture
+def make_trade_in_image(db):
+    def _make_trade_in_image(trade_in, name='x.jpg'):
+        image_db = TradeInImage(trade_in_id=trade_in.id, trade_in_image=f'/media/trade_in_images/{name}')
+        db.add(image_db)
+        db.commit()
+        db.refresh(image_db)
+        return image_db
+
+    return _make_trade_in_image
+
+
+@pytest.fixture
+def make_favorite(db):
+    def _make_favorite(user, car):
+        favorite_db = Favorite(user_id=user.id, car_id=car.id)
+        db.add(favorite_db)
+        db.commit()
+        db.refresh(favorite_db)
+        return favorite_db
+
+    return _make_favorite
+
+
+@pytest.fixture
+def make_review(db, make_deal):
+    def _make_review(deal=None, **overrides):
+        if deal is None:
+            deal = make_deal(status=DealStatus.delivered)
+        data = dict(client_id=deal.client_id, deal_id=deal.id, seller_id=deal.seller_id, stars=5)
+        data.update(overrides)
+        review_db = Review(**data)
+        db.add(review_db)
+        db.commit()
+        db.refresh(review_db)
+        return review_db
+
+    return _make_review

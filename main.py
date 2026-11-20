@@ -8,7 +8,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from mysite.admin.setup import setup_admin
-from mysite.api import auth, brand, car, car_image, car_model, deal, discount, lead, notification, user
+from mysite.api import (
+    auth,
+    brand,
+    car,
+    car_image,
+    car_model,
+    credit,
+    deal,
+    discount,
+    favorite,
+    lead,
+    notification,
+    review,
+    statistic,
+    trade_in,
+    user,
+)
 from mysite.api.deal import expire_reservations
 from mysite.config import MEDIA_DIR, RESERVATION_CHECK_SECONDS, RESERVATION_SCHEDULER_ENABLED
 from mysite.db.database import SessionLocal
@@ -16,6 +32,7 @@ from mysite.db.database import SessionLocal
 logger = logging.getLogger(__name__)
 
 os.makedirs(os.path.join(MEDIA_DIR, 'car_images'), exist_ok=True)
+os.makedirs(os.path.join(MEDIA_DIR, 'trade_in_images'), exist_ok=True)
 
 
 async def reservation_scheduler():
@@ -60,6 +77,12 @@ auto_app.include_router(lead.lead_note_router)
 auto_app.include_router(deal.deal_router)
 auto_app.include_router(discount.discount_router)
 auto_app.include_router(notification.notification_router)
+auto_app.include_router(trade_in.trade_in_router)
+auto_app.include_router(trade_in.trade_in_image_router)
+auto_app.include_router(favorite.favorite_router)
+auto_app.include_router(review.review_router)
+auto_app.include_router(credit.credit_router)
+auto_app.include_router(statistic.statistic_router)
 
 # для локального запуска без nginx; в docker /media/ отдаёт nginx
 auto_app.mount('/media', StaticFiles(directory=MEDIA_DIR), name='media')
